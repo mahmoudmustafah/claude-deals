@@ -1,0 +1,10 @@
+{
+  "source": "amazon_page",
+  "domain": "www.amazon.eg",
+  "currency": "EGP",
+  "interval_minutes": 10,
+  "db_path": "prices.db",
+  "telegram": { "bot_token": "", "chat_id": "" },
+  "settings": { "real_deal_pct": 0.15, "error_pct": 0.5, "min_history_days": 3 },
+  "products": []
+}
