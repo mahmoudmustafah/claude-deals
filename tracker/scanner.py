@@ -291,7 +291,11 @@ def run_scan_loop(cfg, once=False):
     interval = max(cfg.get("scan", {}).get("interval_minutes", 30), MIN_SCAN_MINUTES) * 60
     while True:
         try:
-            s = scan_once(db, cfg, notifier=notifier)
+            if cfg.get("source") == "creators_api":  # official API instead of reading pages
+                from .creators_api import api_scan_once
+                s = api_scan_once(db, cfg, notifier=notifier)
+            else:
+                s = scan_once(db, cfg, notifier=notifier)
             msg = f"scan: {s['pages']} pages, {s['products']} products seen, {s['deals']} on a deal"
             if s["stopped"]:
                 msg += f" (stopped early: {s['stopped']})"

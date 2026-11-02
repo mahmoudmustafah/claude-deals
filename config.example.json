@@ -34,5 +34,14 @@
       "power bank",
       "gaming"
     ]
+  },
+  "creators_api": {
+    "credential_id": "",
+    "credential_secret": "",
+    "version": "3.2",
+    "partner_tag": "",
+    "min_saving_percent": 10,
+    "pages_per_query": 3,
+    "seconds_between_requests": 1.5
   }
 }

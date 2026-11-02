@@ -28,7 +28,10 @@ def make_source(cfg):
     if kind == "amazon_page":
         from .amazon_page import AmazonPageSource
         return AmazonPageSource(cfg.get("domain", "www.amazon.eg"))
-    raise SystemExit(f"Unknown source '{kind}'. Use 'amazon_page' or 'demo'.")
+    if kind == "creators_api":
+        from .creators_api import CreatorsApiSource
+        return CreatorsApiSource(cfg)
+    raise SystemExit(f"Unknown source '{kind}'. Use 'creators_api', 'amazon_page' or 'demo'.")
 
 
 def make_notifier(cfg):

@@ -58,6 +58,21 @@ personal use. To stay gentle it makes one request at a time with pauses of sever
 scans at most every 20 minutes, and never tries to get around a robot check. More search
 terms or pages per term means more requests and a higher chance of being paused.
 
+## Switching to Amazon's official API (recommended once you can)
+Reading pages can get refused by Amazon. The official **Creators API** (it replaced the old
+Product Advertising API) supports Amazon.eg, is allowed, and asks Amazon directly for
+products that are at least 10% off, with Lightning Deal end times.
+
+1. Join **Amazon Associates** (free) for Amazon.eg and get your account approved.
+2. Make some **qualifying sales** through your Associates links. Amazon only opens the API to
+   associates who have referred sales.
+3. In Associates Central: **Tools → Creators API → Create Application**, then add credentials.
+   Copy the **Credential ID**, **Secret** and **Version**, plus your **Partner tag** (store ID).
+4. In `config.json` set `"source": "creators_api"` and fill in the `creators_api` section.
+   Keep these private; `config.json` is never uploaded to GitHub.
+
+Everything else (dashboard, real/fake labels, Telegram) works the same.
+
 ## Command line extras
     python3 -m tracker.scanner --once    # one deal scan, print a summary
     python3 -m tracker.main --once       # one watch-list check
