@@ -1,76 +1,76 @@
-# Amazon.eg price tracker
+# Amazon.eg Deals
 
-Checks the prices of products you choose every 10 minutes, keeps their price history, and
-sends you a Telegram message only when a deal is **real**.
+A dashboard that runs on your own computer. It finds discounts on Amazon.eg, checks
+whether each one is **real or fake** by comparing it with the product's own price history,
+and shows when the deal ends when Amazon gives an end time.
 
-## Setup (once)
+![Hot deals](docs/hot-deals.png)
 
-1. **Install Python 3.10 or newer** from https://www.python.org/downloads/
-   (on Windows, tick "Add Python to PATH" during install). Nothing else is needed.
-2. **Get the code**: download this folder (or `git clone` the GitHub repo) and open a
-   terminal inside it.
-3. **Create your config**:
-   - Windows: `copy config.example.json config.json`
-   - Mac/Linux: `cp config.example.json config.json`
-4. **Connect Telegram** (optional if you only want the dashboard): create a bot with @BotFather (`/newbot`), open your bot and press
-   **Start**, then run:
+## What it does
+- **Finds deals by itself.** About every 30 minutes it reads Amazon.eg's deals page and the
+  search results for popular categories (phones, laptops, headphones, TVs, kitchen,
+  perfume ...). You can change the list in `config.json` under `scan.queries`.
+- **Builds price history for every product it sees**, not only the discounted ones. That's
+  what makes the real/fake check possible.
+- **Labels each deal**:
+  - **Real deal**: at least 15% below what the product normally sold for *before* the deal.
+  - **Possible price error**: 50%+ below normal. Act fast.
+  - **Fake discount**: Amazon shows a big "was" price, but the product normally sells at about
+    this price, or the price was pushed up shortly before the "sale".
+  - **Small real discount**: 5-15% below normal.
+  - **Not verified yet**: there isn't 3 days of history before the deal started. On the
+    first days most deals show this, and it gets better every day the tracker runs.
+- **Deal end time**: when Amazon shows a countdown (Lightning Deals, "Ends in 2h 15m") the
+  page counts down live and shows how much stock is claimed. Most normal discounts have no
+  published end date; for those it shows how long the deal has been running, and when it
+  ended once it's gone.
+- **My watch list** tab: products you follow closely (checked every 10 minutes), with a full
+  90-day chart. Add one from any deal with **☆ Watch**, or paste a link.
+- **Telegram** (optional): alerts for watch-list deals, and for scanned deals that are
+  verified real and 25%+ off (change `scan.alert_min_discount`).
 
-       python3 -m tracker.cli telegram
-
-   Paste the token when asked. You should get a test message. (On Windows type `python`
-   instead of `python3`.)
-5. **Add products** in the dashboard (see below), or by pasting their Amazon.eg links:
-
-       python3 -m tracker.cli add "https://www.amazon.eg/-/en/.../dp/B0XXXXXXXX" --title "Kettle"
+## Setup on a Mac (once)
+1. Download the code (green **Code** button on GitHub, then **Download ZIP**) and unzip it.
+2. Right-click the folder and choose **New Terminal at Folder**.
+3. Type `python3 --version`. If macOS offers to install developer tools, click **Install**.
+4. `cp config.example.json config.json`
+5. Optional, for Telegram: create a bot with @BotFather (`/newbot`), press **Start** in your
+   bot, then run `python3 -m tracker.cli telegram` and paste the token.
 
 ## Run it
+    caffeinate -i python3 -m tracker.dashboard
 
-**Easiest: the dashboard.** One command checks prices every 10 minutes *and* opens a
-dashboard in your browser at http://localhost:8000:
+Your browser opens http://localhost:8000. Keep the Terminal window open (`caffeinate` keeps
+the Mac awake). Stop with **Control + C**. The first scan starts right away and takes a few
+minutes; the page refreshes by itself.
 
-    python3 -m tracker.dashboard
+(On Windows: `python -m tracker.dashboard`.)
 
-![Dashboard](docs/dashboard.png)
-
-On the dashboard you can paste a link to watch a new product, remove products (×), filter
-real deals / fake discounts, and hover a chart to see the price at any time. It refreshes
-itself every minute. Telegram alerts still go out if you set them up.
-
-Without the dashboard:
-
-    python3 -m tracker.main --once     # one check now, to see that it works
-    python3 -m tracker.main            # keep checking every 10 minutes (leave the window open)
-    python3 -m tracker.cli status      # current vs usual price for each product
-
-It needs **3 days of history** before it starts judging deals, so leave it running.
-The computer must stay on and awake while it runs.
-
-## How it decides
-- **Usual price (reference):** the median price over the last 90 days (or 30 days if the
-  price has settled lower). Amazon's crossed-out "was" price is ignored.
-- **Real deal:** 15%+ below the usual price. **Pricing error:** 50%+ below.
-- **Fake discount:** a big "was" price while the price is near normal, or the price was
-  pushed up in the last 14 days and the "sale" only brings it back down.
-- The same product won't alert again for 24 hours unless the price drops another 3%.
-- Change the thresholds in `config.json` under `settings`.
+## If something doesn't work
+- **A scan finds no products** on a page: the tracker saves that page into the `debug`
+  folder. Send the file to Claude so the reader can be updated for Amazon's current layout.
+- **"Paused ... Amazon asked us to slow down"**: Amazon showed a robot check. Everything
+  waits (10 min, then 20, 40, up to 2 hours) and continues by itself.
 
 ## About reading Amazon pages
-This reads Amazon.eg product pages directly, which Amazon's terms of use don't allow; it's
-meant for a small personal watch list. To stay gentle it reads one page at a time with
-pauses, never checks more often than every 5 minutes, and if Amazon shows a robot check it
-stops and waits (10 min, then 20, 40 ... up to 2 hours) instead of trying to get around it.
-Keep the watch list small (roughly 20-30 products). If Amazon changes its page layout, prices
-may stop being found; the tracker will print "no price on the page" and the parser in
-`tracker/amazon_page.py` needs an update.
+This reads Amazon.eg pages directly, which Amazon's terms of use don't allow; it's meant for
+personal use. To stay gentle it makes one request at a time with pauses of several seconds,
+scans at most every 20 minutes, and never tries to get around a robot check. More search
+terms or pages per term means more requests and a higher chance of being paused.
+
+## Command line extras
+    python3 -m tracker.scanner --once    # one deal scan, print a summary
+    python3 -m tracker.main --once       # one watch-list check
+    python3 -m tracker.cli add "https://www.amazon.eg/dp/B0XXXXXXXX" --title "Kettle"
+    python3 -m tracker.cli status        # watch list: now vs usual price
 
 ## Files
-- `tracker/amazon_page.py`: reads price, "was" price, stock and title from a product page
-- `tracker/analyzer.py`: usual price, real vs fake deal logic
-- `tracker/db.py`: price history (SQLite file `prices.db`)
-- `tracker/notify.py`: Telegram messages
-- `tracker/main.py`: the every-10-minutes loop
-- `tracker/cli.py`: add/list/status/telegram commands
-- `tracker/dashboard.py` + `dashboard.html`: the browser dashboard (runs only on your computer)
+- `tracker/scanner.py`: finds deals on listing pages, reads end times, judges real vs fake
+- `tracker/amazon_page.py`: reads product pages; shared polite fetcher with pause on robot checks
+- `tracker/analyzer.py`: usual price and real/fake logic
+- `tracker/db.py`: price history and deals (SQLite file `prices.db`)
+- `tracker/dashboard.py` + `dashboard.html`: the dashboard (only reachable from your computer)
+- `tracker/main.py`, `notify.py`, `cli.py`: watch-list checks, Telegram, commands
 
 ## Tests
     python3 -m unittest

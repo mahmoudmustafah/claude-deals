@@ -2,7 +2,7 @@
 (Live pages could not be fetched from the build machine; confirm with a real run.)"""
 import unittest
 
-from tracker.amazon_page import AmazonPageSource, Blocked, parse_product_page
+from tracker.amazon_page import AmazonPageSource, Blocked, PoliteFetcher, parse_product_page
 
 DEAL_PAGE = """
 <html><body>
@@ -74,7 +74,8 @@ class PolitenessTests(unittest.TestCase):
             fetched.append(asin)
             return pages[asin]
 
-        src = AmazonPageSource(fetch=fetch, sleep=slept.append)
+        fetcher = PoliteFetcher(fetch=fetch, sleep=slept.append)
+        src = AmazonPageSource(fetcher=fetcher)
         out = src.get_prices(["A", "B", "C"])
         self.assertEqual(list(out), ["A"])
         self.assertEqual(fetched, ["A", "B"])          # stopped at the robot check
@@ -82,7 +83,7 @@ class PolitenessTests(unittest.TestCase):
         self.assertTrue(4 <= slept[0] <= 10)
         self.assertEqual(src.get_prices(["A"]), {})    # still paused
         self.assertEqual(fetched, ["A", "B"])
-        self.assertEqual(src.backoff_min, 20)          # next pause is longer
+        self.assertEqual(fetcher.backoff_min, 20)          # next pause is longer
 
 
 if __name__ == "__main__":

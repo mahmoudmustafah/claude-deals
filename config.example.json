@@ -4,7 +4,35 @@
   "currency": "EGP",
   "interval_minutes": 10,
   "db_path": "prices.db",
-  "telegram": { "bot_token": "", "chat_id": "" },
-  "settings": { "real_deal_pct": 0.15, "error_pct": 0.5, "min_history_days": 3 },
-  "products": []
+  "telegram": {
+    "bot_token": "",
+    "chat_id": ""
+  },
+  "settings": {
+    "real_deal_pct": 0.15,
+    "error_pct": 0.5,
+    "min_history_days": 3
+  },
+  "products": [],
+  "scan": {
+    "interval_minutes": 30,
+    "deals_page": true,
+    "pages_per_query": 1,
+    "alert_min_discount": 0.25,
+    "queries": [
+      "mobile phones",
+      "laptops",
+      "headphones",
+      "smart watch",
+      "tablet",
+      "tv",
+      "air fryer",
+      "kitchen appliances",
+      "home appliances",
+      "perfume",
+      "skin care",
+      "power bank",
+      "gaming"
+    ]
+  }
 }

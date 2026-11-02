@@ -108,6 +108,53 @@ aside h2 { font-size: 15px; margin: 0 0 10px; }
 .legend span::before { content: ""; display: inline-block; width: 14px; margin-right: 5px; vertical-align: middle; }
 .legend .l-price::before { height: 2px; background: var(--chart); }
 .legend .l-usual::before { border-top: 2px dashed var(--faint); }
+.tabs { display: flex; gap: 4px; margin-top: 10px; background: var(--chip); border-radius: 10px; padding: 3px; width: fit-content; }
+.tabs button { border: 0; background: none; color: var(--muted); padding: 6px 14px; border-radius: 8px; font-weight: 600; }
+.tabs button.on { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+section > .sub { margin-top: 16px; }
+.stats.five { grid-template-columns: repeat(5, 1fr); }
+.controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.controls input[type=search] { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  border-radius: 8px; padding: 5px 10px; width: 170px; }
+.chk { color: var(--muted); font-size: 13px; display: flex; gap: 5px; align-items: center; }
+.dgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.dcard { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 8px; }
+.dcard.v-real { border-color: color-mix(in srgb, var(--deal) 45%, var(--line)); }
+.dcard.v-error { border-color: color-mix(in srgb, var(--error) 55%, var(--line)); }
+.dcard.ended { opacity: .6; }
+.drow { display: flex; gap: 12px; }
+.thumb { width: 76px; height: 76px; flex: none; border-radius: 10px; background: #fff; border: 1px solid var(--line);
+  display: grid; place-items: center; overflow: hidden; }
+.thumb { position: relative; color: #b8bec7; font-size: 28px; font-weight: 700; text-decoration: none; }
+.thumb img { position: absolute; inset: 4px; width: calc(100% - 8px); height: calc(100% - 8px); object-fit: contain; background: #fff; }
+.dmain { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.b-real { color: var(--deal); background: var(--deal-bg); } .b-unverified, .b-small { color: var(--learn); background: var(--learn-bg); }
+.b-amz { color: var(--muted); background: var(--chip); font-weight: 500; }
+.dprice { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.dprice b { font-size: 20px; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.dprice s { color: var(--faint); font-size: 13px; }
+.cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.cmp div { background: var(--chip); border-radius: 8px; padding: 6px 9px; font-size: 12px; color: var(--muted); }
+.cmp b { display: block; font-size: 15px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.cmp .good b { color: var(--deal); } .cmp .bad b { color: var(--fake); } .cmp .unk b { color: var(--learn); }
+.expiry { font-size: 13px; display: flex; gap: 6px; align-items: center; }
+.expiry.soon { color: var(--error); font-weight: 600; }
+.expiry .muted { color: var(--muted); }
+.meter { height: 5px; border-radius: 999px; background: var(--chip); overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--error); }
+.spark { height: 34px; } .spark svg { width: 100%; height: 100%; display: block; }
+details { font-size: 13px; color: var(--muted); }
+details summary { cursor: pointer; color: var(--accent); }
+details ul { margin: 6px 0 0; padding-left: 18px; }
+.dact { display: flex; gap: 8px; margin-top: auto; }
+.ghost { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 6px 10px;
+  font-size: 13px; text-decoration: none; text-align: center; flex: 1; }
+.ghost:hover { background: var(--chip); }
+.ghost[disabled] { opacity: .6; cursor: default; }
+.more { text-align: center; margin-top: 16px; }
+@media (max-width: 900px) { .stats.five { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; } aside { position: static; }
   .stats { grid-template-columns: repeat(2, 1fr); }
@@ -119,12 +166,54 @@ aside h2 { font-size: 15px; margin: 0 0 10px; }
 <div class="wrap">
   <header>
     <div>
-      <h1>Price Watch</h1>
-      <div class="sub"><span class="dot" id="dot"></span><span id="sub">Loading…</span></div>
+      <h1>Amazon.eg Deals</h1>
+      <nav class="tabs" id="tabs">
+        <button data-tab="deals" class="on">🔥 Hot deals</button>
+        <button data-tab="watch">My watch list</button>
+      </nav>
     </div>
     <div class="legend"><span class="l-price">Price</span><span class="l-usual">Usual price</span></div>
   </header>
 
+  <section id="view-deals">
+    <div class="sub"><span class="dot" id="d-dot"></span><span id="d-sub">Loading…</span></div>
+    <section class="stats five">
+      <div class="stat"><b id="d-total">–</b><span>Deals found now</span></div>
+      <div class="stat deal"><b id="d-real">–</b><span>Real deals</span></div>
+      <div class="stat fake"><b id="d-fake">–</b><span>Fake discounts</span></div>
+      <div class="stat"><b id="d-unv">–</b><span>Not verified yet</span></div>
+      <div class="stat error"><b id="d-soon">–</b><span>Ending within 24 h</span></div>
+    </section>
+    <div class="toolbar">
+      <div class="filters" id="d-filters">
+        <button data-f="all" class="on">All</button>
+        <button data-f="real">Real deals</button>
+        <button data-f="error">Price errors</button>
+        <button data-f="unverified">Not verified yet</button>
+        <button data-f="fake">Fake discounts</button>
+      </div>
+      <div class="controls">
+        <input id="d-q" type="search" placeholder="Search deals">
+        <select id="d-cat"><option value="">All categories</option></select>
+        <select id="d-min">
+          <option value="0">Any discount</option><option value="0.2">20%+ off</option>
+          <option value="0.4">40%+ off</option><option value="0.6">60%+ off</option>
+        </select>
+        <select id="d-sort">
+          <option value="real">Best real discount</option>
+          <option value="claimed">Biggest claimed discount</option>
+          <option value="ending">Ending soonest</option>
+          <option value="new">Newest</option>
+        </select>
+        <label class="chk"><input type="checkbox" id="d-ended"> Show ended</label>
+      </div>
+    </div>
+    <div class="dgrid" id="d-grid"></div>
+    <div class="more" id="d-more"></div>
+  </section>
+
+  <section id="view-watch" hidden>
+  <div class="sub"><span class="dot" id="dot"></span><span id="sub">Loading…</span></div>
   <section class="stats">
     <div class="stat"><b id="s-total">–</b><span>Products watched</span></div>
     <div class="stat deal"><b id="s-deal">–</b><span>Real deals now</span></div>
@@ -160,6 +249,7 @@ aside h2 { font-size: 15px; margin: 0 0 10px; }
       <div id="alerts"></div>
     </aside>
   </div>
+  </section>
 </div>
 
 <script>
@@ -336,6 +426,164 @@ $("grid").addEventListener("click", async (e) => {
   await fetch("/api/products/" + encodeURIComponent(b.dataset.del), { method: "DELETE" });
   load();
 });
+
+// ---------------- Hot deals ----------------
+const VERDICT = { real: "Real deal", error: "Possible price error", fake: "Fake discount",
+  small: "Small real discount", unverified: "Not verified yet" };
+let deals = null, dFilter = "all", dShown = 60;
+const dur = (s) => {
+  s = Math.max(0, Math.round(s));
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  if (d) return `${d}d ${h}h`;
+  if (h) return `${h}h ${m}m`;
+  return `${m}m ${s % 60}s`;
+};
+const nowSec = () => Date.now() / 1000;
+const clockSkew = () => (deals ? deals.now - deals._loadedAt : 0);
+
+function spark(h, ref) {
+  if (!h || h.length < 2) return "";
+  const W = 200, H = 34, ps = h.map((d) => d.p).concat(ref ? [ref] : []);
+  let lo = Math.min(...ps), hi = Math.max(...ps);
+  if (hi - lo < hi * 0.2) { const mid = (hi + lo) / 2; lo = mid - hi * 0.1; hi = mid + hi * 0.1; }
+  const t0 = h[0].t, t1 = h[h.length - 1].t;
+  const x = (t) => ((t - t0) / (t1 - t0 || 1)) * W, y = (v) => 2 + (1 - (v - lo) / (hi - lo)) * (H - 4);
+  let d = `M${x(h[0].t)},${y(h[0].p)}`;
+  for (let i = 1; i < h.length; i++) d += `H${x(h[i].t)}V${y(h[i].p)}`;
+  const r = ref ? `<line x1="0" x2="${W}" y1="${y(ref)}" y2="${y(ref)}" stroke="var(--faint)" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>` : "";
+  return `<div class="spark" title="Price over the last 30 days"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${r}
+    <path d="${d}" fill="none" stroke="var(--chart)" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg></div>`;
+}
+
+function expiry(d) {
+  const now = nowSec() + clockSkew();
+  if (d.ended_at) return `<div class="expiry"><span class="muted">Ended ${ago2(now - d.ended_at)} · lasted ${dur(d.ended_at - d.first_seen)}</span></div>`;
+  if (d.ends_at) {
+    const left = d.ends_at - now;
+    const claimed = d.claimed_by != null ? `<div class="meter" title="${Math.round(d.claimed_by * 100)}% claimed"><i style="width:${Math.round(d.claimed_by * 100)}%"></i></div>` : "";
+    return `<div class="expiry ${left < 3 * 3600 ? "soon" : ""}">⏳ Ends in <b data-ends="${d.ends_at}">${dur(left)}</b>${d.claimed_by != null ? ` · ${Math.round(d.claimed_by * 100)}% claimed` : ""}</div>${claimed}`;
+  }
+  return `<div class="expiry"><span class="muted">No end time shown by Amazon · running for ${dur(now - d.first_seen)}</span></div>`;
+}
+const ago2 = (s) => (s < 90 ? "just now" : dur(s) + " ago");
+
+function dealCard(d) {
+  const cur = esc(deals.currency);
+  const strike = d.list_price || d.typical_price;
+  const claimed = d.claimed_discount != null ? `−${Math.round(d.claimed_discount * 100)}%` : "no 'was' price";
+  let real, cls;
+  if (d.verdict === "unverified") { real = "Checking…"; cls = "unk"; }
+  else { const r = d.real_discount || 0; real = r > 0.005 ? `−${Math.round(r * 100)}%` : "0%"; cls = r >= 0.15 ? "good" : r < 0.05 ? "bad" : ""; }
+  const notes = d.notes || [];
+  return `<article class="dcard v-${d.verdict} ${d.ended_at ? "ended" : ""}">
+    <div class="drow">
+      <a class="thumb" href="${esc(d.url)}" target="_blank" rel="noopener"><span>${esc((d.title || "?").trim()[0])}</span>${d.image ? `<img loading="lazy" src="${esc(d.image)}" alt="" onerror="this.remove()">` : ""}</a>
+      <div class="dmain">
+        <div class="badges"><span class="badge b-${d.verdict}">${VERDICT[d.verdict]}</span>${d.badge ? `<span class="badge b-amz">${esc(d.badge)}</span>` : ""}</div>
+        <a class="title" href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.title)}</a>
+        <div class="dprice"><b>${money(d.price)} <small>${cur}</small></b>${strike ? `<s>${money(strike)}</s>` : ""}</div>
+      </div>
+    </div>
+    <div class="cmp">
+      <div>Amazon claims<b>${claimed}</b></div>
+      <div class="${cls}">Real discount<b>${real}</b></div>
+    </div>
+    ${expiry(d)}
+    ${spark(d.history, d.reference)}
+    ${notes.length ? `<details><summary>Why?</summary><ul>${notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul></details>` : ""}
+    <div class="dact">
+      <button class="ghost" data-watch="${esc(d.asin)}" ${d.watched ? "disabled" : ""}>${d.watched ? "✓ Watching" : "☆ Watch"}</button>
+      <a class="ghost" href="${esc(d.url)}" target="_blank" rel="noopener">View on Amazon</a>
+    </div>
+  </article>`;
+}
+
+function renderDeals() {
+  if (!deals) return;
+  const now = nowSec() + clockSkew();
+  const active = deals.deals.filter((d) => !d.ended_at);
+  const c = (v) => active.filter((d) => d.verdict === v).length;
+  $("d-total").textContent = active.length;
+  $("d-real").textContent = c("real") + c("error");
+  $("d-fake").textContent = c("fake");
+  $("d-unv").textContent = c("unverified");
+  $("d-soon").textContent = active.filter((d) => d.ends_at && d.ends_at - now < 86400).length;
+  const sc = deals.scan;
+  let sub = `Scans Amazon.eg every ${sc.interval_minutes} min · last scan ${sc.last_scan ? ago2(now - sc.last_scan) : "not yet (first scan takes a few minutes)"} · ${sc.products_seen.toLocaleString()} products with price history`;
+  if (sc.paused_minutes) sub += ` · paused ${sc.paused_minutes} min (Amazon asked us to slow down)`;
+  $("d-sub").textContent = sub;
+  $("d-dot").classList.toggle("stale", !sc.last_scan || now - sc.last_scan > sc.interval_minutes * 60 * 2.5 || sc.paused_minutes > 0);
+
+  const cats = [...new Set(deals.deals.map((d) => d.source).filter(Boolean))].sort();
+  const sel = $("d-cat"), cur = sel.value;
+  sel.innerHTML = `<option value="">All categories</option>` + cats.map((x) => `<option ${x === cur ? "selected" : ""}>${esc(x)}</option>`).join("");
+
+  const q = $("d-q").value.trim().toLowerCase(), cat = sel.value, min = +$("d-min").value, showEnded = $("d-ended").checked;
+  let list = deals.deals.filter((d) => (showEnded || !d.ended_at)
+    && (dFilter === "all" || d.verdict === dFilter || (dFilter === "real" && d.verdict === "error"))
+    && (!cat || d.source === cat)
+    && (!q || d.title.toLowerCase().includes(q))
+    && Math.max(d.real_discount || 0, d.verdict === "unverified" ? d.claimed_discount || 0 : 0) >= min);
+  const realKey = (d) => (d.verdict === "unverified" ? -1 + (d.claimed_discount || 0) / 10 : d.real_discount ?? -1);
+  const sorts = {
+    real: (a, b) => realKey(b) - realKey(a),
+    claimed: (a, b) => (b.claimed_discount || 0) - (a.claimed_discount || 0),
+    ending: (a, b) => (a.ends_at || 9e12) - (b.ends_at || 9e12),
+    new: (a, b) => b.first_seen - a.first_seen,
+  };
+  list.sort(sorts[$("d-sort").value]);
+  $("d-grid").innerHTML = list.length ? list.slice(0, dShown).map(dealCard).join("") :
+    `<div class="empty">${deals.deals.length ? "No deals match these filters." :
+      "No deals yet. The first scan runs right after you start the tracker and takes a few minutes. This page refreshes by itself."}</div>`;
+  $("d-more").innerHTML = list.length > dShown ? `<button class="ghost" id="d-showmore" style="flex:none;padding:8px 18px">Show ${Math.min(60, list.length - dShown)} more (${list.length - dShown} left)</button>` : "";
+}
+
+async function loadDeals() {
+  try {
+    deals = await (await fetch("/api/deals")).json();
+    deals._loadedAt = nowSec();
+    renderDeals();
+  } catch (e) {
+    $("d-sub").textContent = "Can't reach the tracker. Is it still running?";
+    $("d-dot").classList.add("stale");
+  }
+}
+
+$("d-filters").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  dFilter = b.dataset.f; dShown = 60;
+  document.querySelectorAll("#d-filters button").forEach((x) => x.classList.toggle("on", x === b));
+  renderDeals();
+});
+["d-q", "d-cat", "d-min", "d-sort", "d-ended"].forEach((id) =>
+  $(id).addEventListener(id === "d-q" ? "input" : "change", () => { dShown = 60; renderDeals(); }));
+$("d-more").addEventListener("click", (e) => { if (e.target.id === "d-showmore") { dShown += 60; renderDeals(); } });
+$("d-grid").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-watch]"); if (!b || b.disabled) return;
+  const d = deals.deals.find((x) => x.asin === b.dataset.watch);
+  b.disabled = true; b.textContent = "Adding…";
+  const res = await fetch("/api/products", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ link: d.asin, title: d.title }) });
+  if (res.ok) { d.watched = 1; b.textContent = "✓ Watching"; load(); } else { b.disabled = false; b.textContent = "☆ Watch"; }
+});
+// live countdowns
+setInterval(() => {
+  const now = nowSec() + clockSkew();
+  document.querySelectorAll("[data-ends]").forEach((el) => { el.textContent = dur(+el.dataset.ends - now); });
+}, 1000);
+
+// tabs
+function showTab(t) {
+  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
+  $("view-deals").hidden = t !== "deals";
+  $("view-watch").hidden = t !== "watch";
+  try { localStorage.setItem("tab", t); } catch (e) {}
+}
+$("tabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) showTab(b.dataset.tab); });
+try { showTab(localStorage.getItem("tab") || "deals"); } catch (e) { showTab("deals"); }
+
+loadDeals();
+setInterval(loadDeals, 60000);
 
 load();
 setInterval(load, 60000);

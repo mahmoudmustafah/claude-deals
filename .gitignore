@@ -1,3 +1,4 @@
 config.json
 prices.db
 __pycache__/
+debug/

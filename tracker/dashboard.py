@@ -1,7 +1,7 @@
-"""Price dashboard in your browser.
+"""Dashboard in your browser: Hot Deals (found automatically) + your watch list.
 
-    python3 -m tracker.dashboard            # dashboard + price checks every 10 minutes
-    python3 -m tracker.dashboard --no-track # dashboard only (if tracker.main runs separately)
+    python3 -m tracker.dashboard            # dashboard + deal scans + watch list checks
+    python3 -m tracker.dashboard --no-track # dashboard only (no requests to Amazon)
 
 Then open http://localhost:8000
 """
@@ -16,6 +16,8 @@ from pathlib import Path
 from .analyzer import DAY, Settings, analyze
 from .cli import extract_asin, load, save
 from .db import PriceDB
+from .scanner import MIN_SCAN_MINUTES, judge
+from .amazon_page import SHARED
 
 PAGE = Path(__file__).with_name("dashboard.html")
 MAX_POINTS = 400  # chart points per product
@@ -68,6 +70,30 @@ def summarize(db, product, settings, now=None):
     return out
 
 
+def deals_payload(db, cfg, now=None):
+    now = now or time.time()
+    settings = Settings(**cfg.get("settings", {}))
+    out = []
+    for d in db.deals(since_ended=now - DAY):
+        j = judge(db, d, settings, now)
+        hist = db.history(d["asin"], now - 30 * DAY)
+        d.update(j)
+        d["history"] = [{"t": p["ts"], "p": p["price"]} for p in _downsample(hist, 60)]
+        d["title"] = d.get("title") or d["asin"]
+        out.append(d)
+    scan = cfg.get("scan", {})
+    last = db.get_meta("last_scan")
+    return {
+        "currency": cfg.get("currency", "EGP"), "now": now,
+        "scan": {"interval_minutes": max(scan.get("interval_minutes", 30), MIN_SCAN_MINUTES),
+                 "last_scan": float(last) if last else None,
+                 "last_result": db.get_meta("last_scan_stats"),
+                 "paused_minutes": round(SHARED.paused_for() / 60),
+                 "products_seen": db.count_products()},
+        "deals": out,
+    }
+
+
 class Handler(BaseHTTPRequestHandler):
     cfg_path = "config.json"
 
@@ -105,6 +131,9 @@ class Handler(BaseHTTPRequestHandler):
                 "products": [summarize(db, p, settings) for p in db.products()],
                 "alerts": db.recent_alerts(15),
             })
+        elif self.path == "/api/deals":
+            cfg, db = self._ctx()
+            self._json(deals_payload(db, cfg))
         else:
             self._json({"error": "not found"}, 404)
 
@@ -141,13 +170,17 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="config.json")
     ap.add_argument("--port", type=int, default=8000)
-    ap.add_argument("--no-track", action="store_true", help="don't run price checks here")
+    ap.add_argument("--no-track", action="store_true", help="don't contact Amazon (dashboard only)")
+    ap.add_argument("--no-scan", action="store_true", help="only check the watch list, no deal scans")
     ap.add_argument("--no-browser", action="store_true")
     args = ap.parse_args()
     Handler.cfg_path = args.config
     if not args.no_track:
         from .main import run_loop
+        from .scanner import run_scan_loop
         threading.Thread(target=run_loop, args=(load(args.config),), daemon=True).start()
+        if not args.no_scan:
+            threading.Thread(target=run_scan_loop, args=(load(args.config),), daemon=True).start()
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     url = f"http://localhost:{args.port}"
     print(f"Dashboard running at {url}  (press Ctrl+C to stop)")
