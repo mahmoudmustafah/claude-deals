@@ -5,28 +5,28 @@ terms, saves the price of every product it sees (so price history builds up for 
 of products), and keeps track of which products are on a deal right now.
 
     python3 -m tracker.scanner --once      # one scan, then exit
-    python3 -m tracker.scanner             # scan every 30 minutes
+    python3 -m tracker.scanner             # scan every 60 minutes
 
 Usually you don't run this directly: `python3 -m tracker.dashboard` runs it for you.
 """
 import argparse
 import html
+import json
 import os
 import random
 import re
 import time
 import urllib.error
 from dataclasses import dataclass
+from datetime import datetime
 from urllib.parse import quote_plus
 
 from .amazon_page import SHARED, Blocked, _num
 from .analyzer import DAY, Settings, analyze
 
-DEFAULT_QUERIES = [
-    "mobile phones", "laptops", "headphones", "smart watch", "tablet", "tv",
-    "air fryer", "kitchen appliances", "home appliances", "perfume", "skin care",
-    "power bank", "gaming",
-]
+# Kept short on purpose: Amazon refuses scans that read many pages in a row.
+DEFAULT_QUERIES = ["mobile phones", "laptops", "headphones", "air fryer"]
+DEFAULT_SCAN_MINUTES = 60
 MIN_SCAN_MINUTES = 20
 
 
@@ -55,7 +55,10 @@ class Card:
 
 # ---------- reading listing pages ----------
 
-ASIN_ATTR = re.compile(r'data-asin="([A-Z0-9]{10})"')
+# Search results mark cards with data-asin; the carousels on the deals page use
+# data-csa-c-item-type="asin" data-csa-c-item-id="amzn1.asin.XXXXXXXXXX" instead.
+ASIN_ATTR = re.compile(r'data-asin="([A-Z0-9]{10})"'
+                       r'|data-csa-c-item-type="asin" data-csa-c-item-id="amzn1\.asin\.([A-Z0-9]{10})"')
 DEAL_WORDS = ("lightning deal", "limited time deal", "deal of the day", "prime day deal",
               "prime exclusive deal", "top deal", "with prime", "عرض لفترة محدودة", "عرض البرق")
 
@@ -82,10 +85,12 @@ def parse_ends_in(text, now):
 
 def _segments(page):
     """Split a listing page into one chunk of HTML per product card."""
-    hits = [(m.start(), m.group(1)) for m in ASIN_ATTR.finditer(page)]
+    hits = [(m.start(), m.group(1) or m.group(2)) for m in ASIN_ATTR.finditer(page)]
     for i, (pos, asin) in enumerate(hits):
-        end = hits[i + 1][0] if i + 1 < len(hits) else min(len(page), pos + 20000)
-        yield asin, page[pos:end]
+        end = hits[i + 1][0] if i + 1 < len(hits) else len(page)
+        end = min(end, pos + 20000)
+        script = page.find("<script", pos, end)  # don't read a neighbour's text out of page scripts
+        yield asin, page[pos:script if script >= 0 else end]
 
 
 def parse_card(asin, seg, now, domain="www.amazon.eg"):
@@ -102,7 +107,8 @@ def parse_card(asin, seg, now, domain="www.amazon.eg"):
     if not price:
         return None
     title = None
-    m = re.search(r'<h2[^>]*aria-label="([^"]+)"', seg) or re.search(r"<h2[^>]*>(.*?)</h2>", seg, re.S)
+    m = (re.search(r'<h2[^>]*aria-label="([^"]+)"', seg) or re.search(r"<h2[^>]*>(.*?)</h2>", seg, re.S)
+         or re.search(r'class="[^"]*dcl-product-title[^"]*"[^>]*>(.*?)</span>\s*</span>', seg, re.S))
     if m:
         title = _clean(m.group(1))
     if not title:
@@ -122,15 +128,66 @@ def parse_card(asin, seg, now, domain="www.amazon.eg"):
                 claimed=int(claimed.group(1)) / 100 if claimed else None,
                 image=img.group(1) if img else None, url=f"https://{domain}/dp/{asin}")
     if strike and strike > price:
-        if "typical" in strike_label or "was" in strike_label.split()[-2:]:
-            card.typical_price = strike
-        else:
-            card.list_price = strike
+        _set_reference(card, strike, strike_label)
     return card
 
 
+def _set_reference(card, strike, label):
+    """'Typical price:' / 'Was:' is Amazon's own recent price; 'List:' is the RRP."""
+    words = re.findall(r"\b(typical|was|list)\b", label.lower())
+    if words and words[-1] in ("typical", "was"):
+        card.typical_price = strike
+    else:
+        card.list_price = strike
+
+
+def _iso_time(text):
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+    except (AttributeError, ValueError):
+        return None
+
+
+def parse_deals_json(page, now, domain="www.amazon.eg"):
+    """The main grid on /deals is drawn by JavaScript, but its first products come in the
+    page as JSON ("productSearchResponse"), with prices, badges and countdown end times."""
+    cards = []
+    decoder = json.JSONDecoder()
+    for m in re.finditer(r'"productSearchResponse"\s*:\s*', page):
+        try:
+            data, _ = decoder.raw_decode(page, m.end())
+        except ValueError:
+            continue
+        for p in data.get("products") or []:
+            asin = p.get("asin")
+            prices = p.get("price") or {}
+            price = _num(str((prices.get("priceToPay") or {}).get("price", "")))
+            if not asin or not price:
+                continue
+            frags = (((p.get("dealBadge") or {}).get("messaging") or {}).get("content") or {}).get("fragments") or []
+            text = " ".join(f.get("text", "") for f in frags).strip()
+            ends_at = next((_iso_time(f["countdownTimer"].get("targetTime"))
+                            for f in frags if isinstance(f.get("countdownTimer"), dict)), None)
+            badge = None
+            if p.get("dealBadge") or p.get("dealDetails"):
+                badge = text if text and not text.lower().startswith("ends in") else "Limited time deal"
+            if (p.get("addToCart") or {}).get("isLightningDeal"):
+                badge = "Lightning deal"
+            img = ((p.get("image") or {}).get("lowRes") or {})
+            card = Card(asin=asin, title=html.unescape(p.get("title") or "") or None, price=price,
+                        badge=badge, ends_at=ends_at if ends_at and ends_at > now else None,
+                        image=f"{img['baseUrl']}._AC_UL320_.{img.get('extension', 'jpg')}" if img.get("baseUrl") else None,
+                        url=f"https://{domain}/dp/{asin}")
+            basis = prices.get("basisPrice") or {}
+            strike = _num(str(basis.get("price", "")))
+            if strike and strike > price:
+                _set_reference(card, strike, basis.get("label", ""))
+            cards.append(card)
+    return cards
+
+
 def parse_listing(page, now, domain="www.amazon.eg"):
-    cards = {}
+    cards = {c.asin: c for c in parse_deals_json(page, now, domain)}
     for asin, seg in _segments(page):
         if asin in cards:
             continue
@@ -189,13 +246,13 @@ def scan_sources(cfg):
     return sources
 
 
-def scan_once(db, cfg, fetcher=SHARED, notifier=None, settings=None, now=None, pause=(6, 12)):
+def scan_once(db, cfg, fetcher=SHARED, notifier=None, settings=None, now=None, pause=(15, 30)):
     from .main import should_alert
     from .notify import format_alert
 
     settings = settings or Settings(**cfg.get("settings", {}))
     domain = cfg.get("domain", "www.amazon.eg")
-    interval = max(cfg.get("scan", {}).get("interval_minutes", 30), MIN_SCAN_MINUTES) * 60
+    interval = max(cfg.get("scan", {}).get("interval_minutes", DEFAULT_SCAN_MINUTES), MIN_SCAN_MINUTES) * 60
     stats = {"pages": 0, "products": 0, "deals": 0, "empty_pages": [], "stopped": None}
     sources = scan_sources(cfg)
     for i, (label, url) in enumerate(sources):
@@ -213,24 +270,8 @@ def scan_once(db, cfg, fetcher=SHARED, notifier=None, settings=None, now=None, p
         except Exception as e:
             print(f"{label}: couldn't read page ({e})")
             continue
-        stats["pages"] += 1
-        cards = parse_listing(page, t, domain)
-        if not cards:
-            stats["empty_pages"].append(label)
-            _save_debug(label, page)
-            continue
-        for c in cards:
-            db.seen_product(c.asin, c.title, c.url, c.image, label)
-            db.record_price(c.asin, c.price, c.list_price or c.typical_price, ts=t, commit=False)
-            stats["products"] += 1
-            if c.is_deal:
-                stats["deals"] += 1
-                db.upsert_deal(c.asin, t, c.price, c.list_price, c.typical_price, c.badge,
-                               c.ends_at, c.claimed, label)
-            else:
-                db.end_deal(c.asin, t)  # seen again without a discount: the deal is over
-        db.commit()
-        if notifier:
+        cards = _record_page(db, label, page, t, domain, stats)
+        if cards and notifier:
             _alert_new_deals(db, [c for c in cards if c.is_deal], notifier, settings, cfg, t)
     db.end_stale_deals(now or time.time(), stale_after=max(3 * interval, 3 * 3600))
     db.set_meta("last_scan", now or time.time())
@@ -238,6 +279,43 @@ def scan_once(db, cfg, fetcher=SHARED, notifier=None, settings=None, now=None, p
                 + (f", stopped: {stats['stopped']}" if stats["stopped"] else ""))
     if stats["stopped"] is None:
         fetcher.ok()
+    return stats
+
+
+def _record_page(db, label, page, t, domain, stats):
+    stats["pages"] += 1
+    cards = parse_listing(page, t, domain)
+    if not cards:
+        stats["empty_pages"].append(label)
+        _save_debug(label, page)
+        return []
+    for c in cards:
+        db.seen_product(c.asin, c.title, c.url, c.image, label)
+        db.record_price(c.asin, c.price, c.list_price or c.typical_price, ts=t, commit=False)
+        stats["products"] += 1
+        if c.is_deal:
+            stats["deals"] += 1
+            db.upsert_deal(c.asin, t, c.price, c.list_price, c.typical_price, c.badge,
+                           c.ends_at, c.claimed, label)
+        else:
+            db.end_deal(c.asin, t)  # seen again without a discount: the deal is over
+    db.commit()
+    return cards
+
+
+def import_files(db, cfg, paths):
+    """Read Amazon pages you saved from your own browser (File > Save As, "Page Source"),
+    for when Amazon refuses the tracker's own requests. Uses each file's save time."""
+    domain = cfg.get("domain", "www.amazon.eg")
+    stats = {"pages": 0, "products": 0, "deals": 0, "empty_pages": [], "stopped": None}
+    for path in paths:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            page = f.read()
+        label = "Today's deals" if "discount-asin-grid" in page else os.path.basename(path)
+        m = re.search(r"<title>\s*Amazon\.eg\s*:\s*([^<]+)</title>", page)
+        if m and label != "Today's deals":
+            label = _clean(m.group(1))
+        _record_page(db, label, page, os.path.getmtime(path), domain, stats)
     return stats
 
 
@@ -288,7 +366,7 @@ def run_scan_loop(cfg, once=False):
     notifier = make_notifier(cfg)
     if notifier.__class__.__name__ == "ConsoleNotifier":
         notifier = None  # without Telegram, deals just show on the dashboard
-    interval = max(cfg.get("scan", {}).get("interval_minutes", 30), MIN_SCAN_MINUTES) * 60
+    interval = max(cfg.get("scan", {}).get("interval_minutes", DEFAULT_SCAN_MINUTES), MIN_SCAN_MINUTES) * 60
     while True:
         try:
             if cfg.get("source") == "creators_api":  # official API instead of reading pages
@@ -312,8 +390,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="config.json")
     ap.add_argument("--once", action="store_true")
+    ap.add_argument("--file", nargs="+", metavar="PAGE.html",
+                    help="read saved Amazon pages instead of contacting Amazon")
     args = ap.parse_args()
-    run_scan_loop(load(args.config), args.once)
+    cfg = load(args.config)
+    if args.file:
+        from .db import PriceDB
+        s = import_files(PriceDB(cfg.get("db_path", "prices.db")), cfg, args.file)
+        print(f"read {s['pages']} saved pages: {s['products']} products, {s['deals']} on a deal")
+        return
+    run_scan_loop(cfg, args.once)
 
 
 if __name__ == "__main__":

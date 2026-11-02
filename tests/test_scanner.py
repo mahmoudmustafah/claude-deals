@@ -1,11 +1,13 @@
 """Scanner tests on trimmed copies of the structure Amazon search result cards use.
 (Live pages could not be fetched from the build machine; confirm with a real run.)"""
+import os
+import tempfile
 import unittest
 
 from tracker.amazon_page import Blocked, PoliteFetcher
 from tracker.analyzer import DAY
 from tracker.db import PriceDB
-from tracker.scanner import judge, parse_ends_in, parse_listing, scan_once
+from tracker.scanner import import_files, judge, parse_ends_in, parse_listing, scan_once
 
 NOW = 1_800_000_000.0
 
@@ -61,6 +63,59 @@ class ParseTests(unittest.TestCase):
         self.assertIsNone(parse_ends_in("Limited time deal", NOW))
 
 
+# Trimmed from live amazon.eg pages fetched on 2026-11-03.
+LIVE_SEARCH_WAS = """
+<div role="listitem" data-asin="B0WASPRICE" data-index="15" data-component-type="s-search-result" class="s-result-item s-asin">
+<div cel_widget_id="MAIN-SEARCH_RESULTS-15" data-csa-c-item-id="amzn1.asin.1.B0WASPRICE"><span class="a-declarative" data-action="puis-card-container-declarative" data-csa-c-item-id="amzn1.asin.B0WASPRICE" data-csa-c-type="item" data-csa-c-owner="puis">
+<div class="s-product-image-container"><img class="s-image" src="https://m.media-amazon.com/images/I/61abcdEFgh._AC_UL320_.jpg" alt="Wired Earphones..."/></div>
+<div data-cy="title-recipe"><a class="a-link-normal" href="/-/en/x/dp/B0WASPRICE/ref=sr_1_13"><h2 aria-label="Wired Earphones with Mic" class="a-size-base-plus"><span>Wired Earphones with Mic</span></h2></a></div>
+<div data-cy="price-recipe"><div class="a-row"><span id="DEAL_B0WASPRICE" class="a-badge" data-a-badge-type="deal"><span class="a-badge-label-inner a-text-ellipsis"><span class="a-badge-text" data-a-badge-color="sx-deal-dynamic-text">Limited time deal</span></span></span></div>
+<a class="a-link-normal s-no-hover" href="/-/en/x/dp/B0WASPRICE"><span class="a-price" data-a-size="xl" data-a-color="base"><span class="a-offscreen">EGP 245.00</span><span aria-hidden="true"><span class="a-price-symbol">EGP</span><span class="a-price-whole">245<span class="a-price-decimal">.</span></span><span class="a-price-fraction">00</span></span></span> <span class="a-offscreen">Was: EGP 279.99</span><div aria-hidden="Was: EGP 279.99" class="a-section aok-inline-block"><span class="a-size-base a-color-secondary">Was: </span><span class="a-price a-text-price" data-a-size="b" data-a-strike="true" data-a-color="secondary"><span class="a-offscreen">EGP 279.99</span><span aria-hidden="true">EGP279.99</span></span></div></a>
+<div class="a-row a-size-base a-color-secondary"><span>20% off NBE Visa Signature Credit Cards</span></div></div>
+</span></div></div>"""
+
+LIVE_DEALS = """
+<ol class="a-carousel" role="list"><li aria-roledescription="slide" class="a-carousel-card dcl-carousel-element"><div class="dcl-product-wrapper" data-csa-c-pos="1,2" data-csa-c-type="item" data-csa-c-item-type="asin" data-csa-c-item-id="amzn1.asin.B0GTLCZWVQ" data-csa-c-owner="Dossier"><div class="a-cardui dcl-product"><a class="a-link-normal dcl-product-link" href="/-/en/Arzum/dp/B0GTLCZWVQ?ref_=ST-shovler-2"><div class="dcl-product-image-container"><img alt="" src="https://m.media-amazon.com/images/I/31681RiloDL._AC_SR240,220_.jpg" class="a-dynamic-image dcl-dynamic-image"/></div><div class="a-section dcl-product-attributes"><span class="dcl-truncate dcl-product-title" style="--max-rows:1"><span>Arzum OKKA Minio Turkish Coffee Machine OK0050-04, 5 Cups</span></span><div class="a-section dcl-product-price"><div class="dcl-price-single"><span class="a-price dcl-product-price-new" data-a-size="medium_plus" data-a-color="base"><span class="a-offscreen">EGP 2,815.96</span><span aria-hidden="true"><span class="a-price-symbol">EGP</span><span class="a-price-whole">2,815<span class="a-price-decimal"></span></span><span class="a-price-fraction">96</span></span></span><div class="a-section dcl-product-old-price-section"><span class="a-size-mini a-color-secondary dcl-product-old-price-label aok-offscreen">List:</span><span class="a-price a-text-price dcl-product-price-old" data-a-size="mini" data-a-strike="true" data-a-color="secondary"><span class="a-offscreen">EGP 3,200.00</span><span aria-hidden="true">EGP 3,200.00</span></span></div></div></div></div></a></div></div></li></ol>
+<div id="slot-14" data-id="discount-asin-grid"><div id="dealsGridLinkAnchor" class="discounts-react-app"></div>
+<script>
+  (function () { window.P && P.when('discounts-react-app').execute(function (app) { app.render(
+  {"marketplaceId":"ARBP9OOSHTCHU","site":"amazon.eg","currencyIsoCode":"EGP","productSearchResponse":{"nextIndex":30,"startIndex":0,"products":[
+   {"asin":"B0H68JT4HK","title":"Haier 32 Inch Smart TV - H32K70G","link":"/Haier/dp/B0H68JT4HK","image":{"altText":"Haier","lowRes":{"baseUrl":"https://m.media-amazon.com/images/I/41Cubsy2J+L","extension":"jpg","width":500,"height":500}},"price":{"priceToPay":{"label":"Deal Price:","price":"5999.0","strikethrough":false},"basisPrice":{"label":"List:","price":"6499.0","strikethrough":true}},"dealBadge":{"label":{"content":{"fragments":[{"text":"8% off"}]}},"messaging":{"content":{"fragments":[{"text":"Limited time deal"}]}}},"dealDetails":{"state":"AVAILABLE","type":"BEST_DEAL","id":"2d048156"},"addToCart":{"isLightningDeal":false}},
+   {"asin":"B0F2B94W29","title":"adidas MEN CLOUDFOAM FLEX - LACES SHOES","link":"/adidas/dp/B0F2B94W29","image":{"lowRes":{"baseUrl":"https://m.media-amazon.com/images/I/31GJF7i93DL","extension":"jpg"}},"price":{"priceToPay":{"label":"Deal Price:","price":"2410.0","strikethrough":false},"basisPrice":{"label":"Was:","price":"2889.0","strikethrough":true}},"dealBadge":{"label":{"content":{"fragments":[{"text":"17% off"}]}},"messaging":{"content":{"fragments":[{"text":"Ends in "},{"countdownTimer":{"targetTime":"2027-01-16T08:00:00.000Z"}}]}}},"dealDetails":{"state":"AVAILABLE","type":"BEST_DEAL","id":"d8ce3b4b"}},
+   {"asin":"B0BXB2CNQ3","title":"Notebook A5","price":{"priceToPay":{"label":"Price:","price":"147.5","strikethrough":false},"basisPrice":{"label":"List:","price":"276.0","strikethrough":true}},"dealBadge":null},
+   {"asin":"B0NOPRICE1","title":"No price yet","price":{}}
+  ],"refinements":[]},"acsConfig":{}}); }); })();
+</script></div>"""
+
+
+class LiveMarkupTests(unittest.TestCase):
+    def test_search_card_with_was_price(self):
+        [c] = parse_listing(LIVE_SEARCH_WAS, NOW)
+        self.assertEqual((c.asin, c.price, c.typical_price, c.list_price), ("B0WASPRICE", 245.0, 279.99, None))
+        self.assertEqual(c.title, "Wired Earphones with Mic")
+        self.assertEqual(c.badge, "Limited time deal")
+        self.assertIsNone(c.ends_at)
+        self.assertIsNone(c.claimed)
+
+    def test_deals_page_carousel_and_embedded_json(self):
+        cards = {c.asin: c for c in parse_listing(LIVE_DEALS, NOW)}
+        self.assertEqual(set(cards), {"B0GTLCZWVQ", "B0H68JT4HK", "B0F2B94W29", "B0BXB2CNQ3"})
+        k = cards["B0GTLCZWVQ"]   # carousel card
+        self.assertEqual((k.price, k.list_price), (2815.96, 3200.0))
+        self.assertTrue(k.title.startswith("Arzum OKKA Minio"))
+        self.assertIn("31681RiloDL", k.image)
+        self.assertIsNone(k.badge)   # the grid's "Limited time deal" text must not leak in
+        tv = cards["B0H68JT4HK"]
+        self.assertEqual((tv.price, tv.list_price, tv.badge), (5999.0, 6499.0, "Limited time deal"))
+        self.assertEqual(tv.image, "https://m.media-amazon.com/images/I/41Cubsy2J+L._AC_UL320_.jpg")
+        shoe = cards["B0F2B94W29"]
+        self.assertEqual((shoe.price, shoe.typical_price, shoe.list_price), (2410.0, 2889.0, None))
+        self.assertEqual(shoe.ends_at, 1800086400.0)   # 2027-01-16T08:00:00Z
+        self.assertEqual(shoe.badge, "Limited time deal")
+        self.assertTrue(cards["B0BXB2CNQ3"].is_deal)   # no badge, but 47% below list price
+        self.assertIsNone(cards["B0BXB2CNQ3"].badge)
+
+
 class FakeFetcher(PoliteFetcher):
     def __init__(self, pages):
         super().__init__(fetch=lambda url: pages(url), sleep=lambda s: None)
@@ -101,6 +156,18 @@ class ScanTests(unittest.TestCase):
         self.assertIsNone(deals["B0TYPE0001"]["ended_at"])
         # Lightning deal countdown (2h15m) has passed
         self.assertEqual(deals["B0LIGHT001"]["ended_at"], NOW + 8100)
+
+    def test_import_saved_pages(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "deals.html")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(LIVE_DEALS)
+            os.utime(path, (NOW, NOW))
+            stats = import_files(self.db, self.cfg, [path])
+        self.assertEqual((stats["pages"], stats["products"], stats["deals"]), (1, 4, 4))
+        deals = {d["asin"]: d for d in self.db.deals()}
+        self.assertEqual(deals["B0F2B94W29"]["source"], "Today's deals")
+        self.assertEqual(deals["B0F2B94W29"]["first_seen"], NOW)
 
     def test_stops_when_blocked(self):
         def pages(url):

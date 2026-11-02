@@ -3,12 +3,14 @@
 Rules it follows on purpose:
 - One page at a time, with a random pause of several seconds between products.
 - If Amazon shows a robot check (CAPTCHA) or an error, it stops and waits longer
-  before trying again (10 min, 20, 40 ... up to 2 hours). It never tries to get around it.
+  before trying again (30 min, 60, then 2 hours). It never tries to get around it.
 """
 import gzip
 import html
+import os
 import random
 import re
+import ssl
 import threading
 import time
 import urllib.error
@@ -22,6 +24,18 @@ USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 
 class Blocked(Exception):
     pass
+
+
+def _ssl_context():
+    """Python from python.org on a Mac comes without trusted certificates until you run its
+    'Install Certificates' step; macOS's own list works just as well."""
+    ctx = ssl.create_default_context()
+    if not ctx.get_ca_certs() and os.path.exists("/etc/ssl/cert.pem"):
+        ctx.load_verify_locations("/etc/ssl/cert.pem")
+    return ctx
+
+
+SSL_CONTEXT = _ssl_context()
 
 
 def _num(text):
@@ -61,16 +75,20 @@ def parse_product_page(page, asin):
         if not block:
             continue
         # The strike-through "was" price, if there is one
-        m = re.search(r'class="a-price a-text-price"[^>]*data-a-strike="true"[^>]*>\s*'
+        # (live pages add more classes, e.g. "a-price a-text-price apex-basisprice-value")
+        m = re.search(r'class="a-price a-text-price[^"]*"[^>]*data-a-strike="true"[^>]*>\s*'
                       r'<span class="a-offscreen">([^<]+)</span>', block)
         if m:
             list_price = _num(m.group(1))
-        # The real price: first a-price that is not the strike-through one
+        # The real price: first a-price that is not the strike-through one.
+        # Live pages often leave its a-offscreen empty and only fill a-price-whole/-fraction.
         for m in re.finditer(r'<span class="a-price(?P<cls>[^"]*)"(?P<attrs>[^>]*)>\s*'
-                             r'<span class="a-offscreen">(?P<val>[^<]+)</span>', block):
+                             r'<span class="a-offscreen">(?P<val>[^<]*)</span>', block):
             if "a-text-price" in m.group("cls") or 'data-a-strike="true"' in m.group("attrs"):
                 continue
             price = _num(m.group("val"))
+            if price is None:
+                block = block[m.start():]  # read whole/fraction from this same price
             break
         if price is None:
             w = re.search(r'class="a-price-whole">([^<]+)', block)
@@ -91,14 +109,14 @@ def parse_product_page(page, asin):
 
 class PoliteFetcher:
     """Shared by the watch list checker and the deals scanner: one request at a time,
-    and if Amazon pushes back, *everything* pauses (10 min, 20, 40 ... up to 2 hours)."""
+    and if Amazon pushes back, *everything* pauses (30 min, 60, then 2 hours)."""
 
     def __init__(self, fetch=None, sleep=time.sleep):
         self.lock = threading.Lock()
         self.fetch_raw = fetch or self._fetch
         self.sleep = sleep
         self.blocked_until = 0.0
-        self.backoff_min = 10
+        self.backoff_min = 30
 
     @staticmethod
     def _fetch(url):
@@ -108,7 +126,7 @@ class PoliteFetcher:
             "Accept-Language": "en-US,en;q=0.9",
             "Accept-Encoding": "gzip",
         })
-        with urllib.request.urlopen(req, timeout=30) as r:
+        with urllib.request.urlopen(req, timeout=30, context=SSL_CONTEXT) as r:
             data = r.read()
             if r.headers.get("Content-Encoding") == "gzip":
                 data = gzip.decompress(data)
@@ -142,7 +160,7 @@ class PoliteFetcher:
         self.backoff_min = min(self.backoff_min * 2, 120)
 
     def ok(self):
-        self.backoff_min = 10
+        self.backoff_min = 30
 
 
 SHARED = PoliteFetcher()

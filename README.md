@@ -7,9 +7,8 @@ and shows when the deal ends when Amazon gives an end time.
 ![Hot deals](docs/hot-deals.png)
 
 ## What it does
-- **Finds deals by itself.** About every 30 minutes it reads Amazon.eg's deals page and the
-  search results for popular categories (phones, laptops, headphones, TVs, kitchen,
-  perfume ...). You can change the list in `config.json` under `scan.queries`.
+- **Finds deals by itself.** About once an hour it reads Amazon.eg's deals page and the
+  search results for a few categories (phones, laptops, headphones, air fryers). You can change the list in `config.json` under `scan.queries`.
 - **Builds price history for every product it sees**, not only the discounted ones. That's
   what makes the real/fake check possible.
 - **Labels each deal**:
@@ -50,11 +49,15 @@ minutes; the page refreshes by itself.
 - **A scan finds no products** on a page: the tracker saves that page into the `debug`
   folder. Send the file to Claude so the reader can be updated for Amazon's current layout.
 - **"Paused ... Amazon asked us to slow down"**: Amazon showed a robot check. Everything
-  waits (10 min, then 20, 40, up to 2 hours) and continues by itself.
+  waits (30 min, then 60, then 2 hours) and continues by itself.
+- **Amazon keeps refusing (HTTP 503)**: open the deals page or a search in your own browser,
+  save it (File > Save As, "Page Source"), and load it with
+  `python3 -m tracker.scanner --file ~/Downloads/page.html`. Then run the dashboard with
+  `--no-track` so it shows those deals without contacting Amazon.
 
 ## About reading Amazon pages
 This reads Amazon.eg pages directly, which Amazon's terms of use don't allow; it's meant for
-personal use. To stay gentle it makes one request at a time with pauses of several seconds,
+personal use. To stay gentle it makes one request at a time with pauses of 15-30 seconds,
 scans at most every 20 minutes, and never tries to get around a robot check. More search
 terms or pages per term means more requests and a higher chance of being paused.
 
@@ -75,6 +78,7 @@ Everything else (dashboard, real/fake labels, Telegram) works the same.
 
 ## Command line extras
     python3 -m tracker.scanner --once    # one deal scan, print a summary
+    python3 -m tracker.scanner --file deals.html search.html   # read pages you saved
     python3 -m tracker.main --once       # one watch-list check
     python3 -m tracker.cli add "https://www.amazon.eg/dp/B0XXXXXXXX" --title "Kettle"
     python3 -m tracker.cli status        # watch list: now vs usual price
