@@ -102,7 +102,7 @@ class PolitenessTests(unittest.TestCase):
         self.assertTrue(4 <= slept[0] <= 10)
         self.assertEqual(src.get_prices(["A"]), {})    # still paused
         self.assertEqual(fetched, ["A", "B"])
-        self.assertEqual(fetcher.backoff_min, 20)          # next pause is longer
+        self.assertEqual(fetcher.backoff_min, 60)          # next pause is longer
 
 
 if __name__ == "__main__":

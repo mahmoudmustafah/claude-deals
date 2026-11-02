@@ -16,7 +16,7 @@ from pathlib import Path
 from .analyzer import DAY, Settings, analyze
 from .cli import extract_asin, load, save
 from .db import PriceDB
-from .scanner import MIN_SCAN_MINUTES, judge
+from .scanner import DEFAULT_SCAN_MINUTES, MIN_SCAN_MINUTES, judge
 from .amazon_page import SHARED
 
 PAGE = Path(__file__).with_name("dashboard.html")
@@ -85,7 +85,7 @@ def deals_payload(db, cfg, now=None):
     last = db.get_meta("last_scan")
     return {
         "currency": cfg.get("currency", "EGP"), "now": now,
-        "scan": {"interval_minutes": max(scan.get("interval_minutes", 30), MIN_SCAN_MINUTES),
+        "scan": {"interval_minutes": max(scan.get("interval_minutes", DEFAULT_SCAN_MINUTES), MIN_SCAN_MINUTES),
                  "last_scan": float(last) if last else None,
                  "last_result": db.get_meta("last_scan_stats"),
                  "paused_minutes": round(SHARED.paused_for() / 60),

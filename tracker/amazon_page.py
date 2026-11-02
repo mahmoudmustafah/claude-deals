@@ -3,7 +3,7 @@
 Rules it follows on purpose:
 - One page at a time, with a random pause of several seconds between products.
 - If Amazon shows a robot check (CAPTCHA) or an error, it stops and waits longer
-  before trying again (10 min, 20, 40 ... up to 2 hours). It never tries to get around it.
+  before trying again (30 min, 60, then 2 hours). It never tries to get around it.
 """
 import gzip
 import html
@@ -109,14 +109,14 @@ def parse_product_page(page, asin):
 
 class PoliteFetcher:
     """Shared by the watch list checker and the deals scanner: one request at a time,
-    and if Amazon pushes back, *everything* pauses (10 min, 20, 40 ... up to 2 hours)."""
+    and if Amazon pushes back, *everything* pauses (30 min, 60, then 2 hours)."""
 
     def __init__(self, fetch=None, sleep=time.sleep):
         self.lock = threading.Lock()
         self.fetch_raw = fetch or self._fetch
         self.sleep = sleep
         self.blocked_until = 0.0
-        self.backoff_min = 10
+        self.backoff_min = 30
 
     @staticmethod
     def _fetch(url):
@@ -160,7 +160,7 @@ class PoliteFetcher:
         self.backoff_min = min(self.backoff_min * 2, 120)
 
     def ok(self):
-        self.backoff_min = 10
+        self.backoff_min = 30
 
 
 SHARED = PoliteFetcher()

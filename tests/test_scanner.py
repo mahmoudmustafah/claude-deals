@@ -1,11 +1,13 @@
 """Scanner tests on trimmed copies of the structure Amazon search result cards use.
 (Live pages could not be fetched from the build machine; confirm with a real run.)"""
+import os
+import tempfile
 import unittest
 
 from tracker.amazon_page import Blocked, PoliteFetcher
 from tracker.analyzer import DAY
 from tracker.db import PriceDB
-from tracker.scanner import judge, parse_ends_in, parse_listing, scan_once
+from tracker.scanner import import_files, judge, parse_ends_in, parse_listing, scan_once
 
 NOW = 1_800_000_000.0
 
@@ -154,6 +156,18 @@ class ScanTests(unittest.TestCase):
         self.assertIsNone(deals["B0TYPE0001"]["ended_at"])
         # Lightning deal countdown (2h15m) has passed
         self.assertEqual(deals["B0LIGHT001"]["ended_at"], NOW + 8100)
+
+    def test_import_saved_pages(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "deals.html")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(LIVE_DEALS)
+            os.utime(path, (NOW, NOW))
+            stats = import_files(self.db, self.cfg, [path])
+        self.assertEqual((stats["pages"], stats["products"], stats["deals"]), (1, 4, 4))
+        deals = {d["asin"]: d for d in self.db.deals()}
+        self.assertEqual(deals["B0F2B94W29"]["source"], "Today's deals")
+        self.assertEqual(deals["B0F2B94W29"]["first_seen"], NOW)
 
     def test_stops_when_blocked(self):
         def pages(url):
