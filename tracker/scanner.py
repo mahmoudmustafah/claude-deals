@@ -218,15 +218,42 @@ def judge(db, deal, settings=Settings(), now=None):
     else:
         verdict = "small"
     notes = [n for n in v.notes if not n.startswith("Only ")]
+    reference, real_discount, days_needed = v.reference, v.real_discount, 0.0
     if verdict == "unverified":
-        days = (deal["first_seen"] - before[0]["ts"]) / DAY if before else 0
-        notes.insert(0, f"Not enough price history before this deal yet ({days:.1f} of "
-                        f"{settings.min_history_days:g} days needed).")
-        if deal.get("typical_price"):
-            notes.append(f"Amazon says it typically sells for {deal['typical_price']:,.0f} "
-                         "(Amazon's own label, not checked by us yet).")
+        before_days = (deal["first_seen"] - before[0]["ts"]) / DAY if before else 0
+        running_days = (now - deal["first_seen"]) / DAY
+        if running_days >= settings.min_history_days:
+            # It was already "on sale" when we first saw it, so there is no "before" price.
+            # After a few days, the price it keeps selling at IS its normal price.
+            during = [p for p in db.history(deal["asin"], now - 30 * DAY) if p["ts"] >= deal["first_seen"]]
+            if during:
+                from statistics import median
+                reference = median(p["price"] for p in during)
+                real_discount = 1 - deal["price"] / reference
+                if real_discount >= settings.error_pct:
+                    verdict = "error"
+                elif real_discount >= settings.real_deal_pct:
+                    verdict = "real"
+                    notes.insert(0, f"{real_discount:.0%} below the {reference:,.0f} it has sold for "
+                                    f"over the last {running_days:.0f} days.")
+                elif real_discount >= 0.05:
+                    verdict = "small"
+                else:
+                    verdict = "fake"
+                    notes.insert(0, f"It has sold at about this \"deal\" price for {running_days:.0f} days, "
+                                    f"so {reference:,.0f} is simply its normal price. The crossed-out "
+                                    "price is not a real saving.")
+        if verdict == "unverified":
+            days_needed = max(0.0, settings.min_history_days - max(before_days, running_days))
+            notes.insert(0, "We only started watching this product recently, so we don't know yet "
+                            "what it normally costs. Amazon's crossed-out price can be inflated, "
+                            f"so we don't trust it. About {days_needed:.1f} more days needed.")
+            if deal.get("typical_price"):
+                notes.append(f"Amazon says it typically sells for {deal['typical_price']:,.0f} "
+                             "(Amazon's own label, not checked by us yet).")
     return {
-        "verdict": verdict, "reference": v.reference, "real_discount": v.real_discount,
+        "verdict": verdict, "reference": reference, "real_discount": real_discount,
+        "days_needed": days_needed,
         "claimed_discount": (1 - deal["price"] / claimed_ref) if claimed_ref and claimed_ref > deal["price"] else None,
         "low_90": v.low_90, "high_90": v.high_90, "notes": notes,
     }

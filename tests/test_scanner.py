@@ -180,3 +180,31 @@ class ScanTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AlreadyOnSaleTests(unittest.TestCase):
+    """A product that was already 'on sale' when we first saw it has no 'before' price."""
+
+    def _deal(self, prices_after):
+        db = PriceDB(":memory:")
+        db.upsert_deal("B0ALWAYS01", NOW, prices_after[-1], list_price=350)
+        for i, p in enumerate(prices_after):
+            db.record_price("B0ALWAYS01", p, 350, ts=NOW + i * 6 * 3600)
+        return db, db.deal("B0ALWAYS01")
+
+    def test_unverified_at_first_with_days_needed(self):
+        db, d = self._deal([156.5])
+        j = judge(db, d, now=NOW + 3600)
+        self.assertEqual(j["verdict"], "unverified")
+        self.assertAlmostEqual(j["days_needed"], 3 - 1 / 24, places=2)
+
+    def test_same_deal_price_for_days_is_fake(self):
+        db, d = self._deal([156.5] * 16)          # 4 days at the "deal" price
+        j = judge(db, d, now=NOW + 4 * DAY)
+        self.assertEqual(j["verdict"], "fake")
+        self.assertEqual(j["reference"], 156.5)
+
+    def test_real_drop_after_long_steady_price(self):
+        db, d = self._deal([200.0] * 15 + [150.0])  # dropped below its steady price
+        j = judge(db, d, now=NOW + 4 * DAY)
+        self.assertEqual(j["verdict"], "real")

@@ -472,7 +472,11 @@ function dealCard(d) {
   const strike = d.list_price || d.typical_price;
   const claimed = d.claimed_discount != null ? `−${Math.round(d.claimed_discount * 100)}%` : "no 'was' price";
   let real, cls;
-  if (d.verdict === "unverified") { real = "Checking…"; cls = "unk"; }
+  if (d.verdict === "unverified") {
+    const dn = d.days_needed || 0;
+    real = dn > 1.5 ? `Known in ~${Math.ceil(dn)} days` : dn > 0.05 ? `Known in ~${Math.max(1, Math.round(dn * 24))} h` : "Checking…";
+    cls = "unk";
+  }
   else { const r = d.real_discount || 0; real = r > 0.005 ? `−${Math.round(r * 100)}%` : "0%"; cls = r >= 0.15 ? "good" : r < 0.05 ? "bad" : ""; }
   const notes = d.notes || [];
   return `<article class="dcard v-${d.verdict} ${d.ended_at ? "ended" : ""}">
