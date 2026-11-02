@@ -12,18 +12,31 @@ sends you a Telegram message only when a deal is **real**.
 3. **Create your config**:
    - Windows: `copy config.example.json config.json`
    - Mac/Linux: `cp config.example.json config.json`
-4. **Connect Telegram**: create a bot with @BotFather (`/newbot`), open your bot and press
+4. **Connect Telegram** (optional if you only want the dashboard): create a bot with @BotFather (`/newbot`), open your bot and press
    **Start**, then run:
 
        python3 -m tracker.cli telegram
 
    Paste the token when asked. You should get a test message. (On Windows type `python`
    instead of `python3`.)
-5. **Add products** by pasting their Amazon.eg links:
+5. **Add products** in the dashboard (see below), or by pasting their Amazon.eg links:
 
        python3 -m tracker.cli add "https://www.amazon.eg/-/en/.../dp/B0XXXXXXXX" --title "Kettle"
 
 ## Run it
+
+**Easiest: the dashboard.** One command checks prices every 10 minutes *and* opens a
+dashboard in your browser at http://localhost:8000:
+
+    python3 -m tracker.dashboard
+
+![Dashboard](docs/dashboard.png)
+
+On the dashboard you can paste a link to watch a new product, remove products (×), filter
+real deals / fake discounts, and hover a chart to see the price at any time. It refreshes
+itself every minute. Telegram alerts still go out if you set them up.
+
+Without the dashboard:
 
     python3 -m tracker.main --once     # one check now, to see that it works
     python3 -m tracker.main            # keep checking every 10 minutes (leave the window open)
@@ -57,6 +70,7 @@ may stop being found; the tracker will print "no price on the page" and the pars
 - `tracker/notify.py`: Telegram messages
 - `tracker/main.py`: the every-10-minutes loop
 - `tracker/cli.py`: add/list/status/telegram commands
+- `tracker/dashboard.py` + `dashboard.html`: the browser dashboard (runs only on your computer)
 
 ## Tests
     python3 -m unittest

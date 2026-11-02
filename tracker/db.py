@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS alerts (
 
 class PriceDB:
     def __init__(self, path="prices.db"):
-        self.conn = sqlite3.connect(path)
+        self.conn = sqlite3.connect(path, timeout=30)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
 
@@ -44,6 +44,21 @@ class PriceDB:
                 (title, url, asin),
             )
         self.conn.commit()
+
+    def remove_product(self, asin):
+        """Stop tracking a product (its price history is kept)."""
+        self.conn.execute("DELETE FROM products WHERE asin=?", (asin,))
+        self.conn.commit()
+
+    def recent_alerts(self, limit=20):
+        rows = self.conn.execute(
+            "SELECT a.*, p.title, p.url FROM alerts a LEFT JOIN products p USING(asin) "
+            "ORDER BY a.ts DESC LIMIT ?", (limit,))
+        return [dict(r) for r in rows]
+
+    def last_check(self):
+        r = self.conn.execute("SELECT MAX(ts) FROM prices").fetchone()
+        return r[0]
 
     def products(self):
         return [dict(r) for r in self.conn.execute("SELECT * FROM products ORDER BY added_at")]
