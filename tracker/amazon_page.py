@@ -7,8 +7,10 @@ Rules it follows on purpose:
 """
 import gzip
 import html
+import os
 import random
 import re
+import ssl
 import threading
 import time
 import urllib.error
@@ -22,6 +24,18 @@ USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 
 class Blocked(Exception):
     pass
+
+
+def _ssl_context():
+    """Python from python.org on a Mac comes without trusted certificates until you run its
+    'Install Certificates' step; macOS's own list works just as well."""
+    ctx = ssl.create_default_context()
+    if not ctx.get_ca_certs() and os.path.exists("/etc/ssl/cert.pem"):
+        ctx.load_verify_locations("/etc/ssl/cert.pem")
+    return ctx
+
+
+SSL_CONTEXT = _ssl_context()
 
 
 def _num(text):
@@ -112,7 +126,7 @@ class PoliteFetcher:
             "Accept-Language": "en-US,en;q=0.9",
             "Accept-Encoding": "gzip",
         })
-        with urllib.request.urlopen(req, timeout=30) as r:
+        with urllib.request.urlopen(req, timeout=30, context=SSL_CONTEXT) as r:
             data = r.read()
             if r.headers.get("Content-Encoding") == "gzip":
                 data = gzip.decompress(data)

@@ -84,7 +84,9 @@ def cmd_telegram(cfg_path):
     cfg = load(cfg_path)
     tg = cfg.setdefault("telegram", {})
     token = tg.get("bot_token") or input("Paste your bot token from @BotFather: ").strip()
-    with urllib.request.urlopen(f"https://api.telegram.org/bot{token}/getUpdates", timeout=15) as r:
+    from .amazon_page import SSL_CONTEXT
+    with urllib.request.urlopen(f"https://api.telegram.org/bot{token}/getUpdates", timeout=15,
+                                context=SSL_CONTEXT) as r:
         updates = json.load(r).get("result", [])
     chats = [u["message"]["chat"]["id"] for u in updates if "message" in u]
     if not chats:

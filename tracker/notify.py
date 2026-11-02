@@ -3,6 +3,8 @@ import json
 import urllib.parse
 import urllib.request
 
+from .amazon_page import SSL_CONTEXT
+
 
 def format_alert(product, v, currency="EGP"):
     title = product.get("title") or product["asin"]
@@ -27,7 +29,7 @@ class TelegramNotifier:
     def send(self, text):
         data = urllib.parse.urlencode({"chat_id": self.chat_id, "text": text,
                                        "disable_web_page_preview": "true"}).encode()
-        with urllib.request.urlopen(self.url, data=data, timeout=15) as r:
+        with urllib.request.urlopen(self.url, data=data, timeout=15, context=SSL_CONTEXT) as r:
             return json.load(r)
 
 
