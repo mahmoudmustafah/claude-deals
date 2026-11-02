@@ -61,16 +61,20 @@ def parse_product_page(page, asin):
         if not block:
             continue
         # The strike-through "was" price, if there is one
-        m = re.search(r'class="a-price a-text-price"[^>]*data-a-strike="true"[^>]*>\s*'
+        # (live pages add more classes, e.g. "a-price a-text-price apex-basisprice-value")
+        m = re.search(r'class="a-price a-text-price[^"]*"[^>]*data-a-strike="true"[^>]*>\s*'
                       r'<span class="a-offscreen">([^<]+)</span>', block)
         if m:
             list_price = _num(m.group(1))
-        # The real price: first a-price that is not the strike-through one
+        # The real price: first a-price that is not the strike-through one.
+        # Live pages often leave its a-offscreen empty and only fill a-price-whole/-fraction.
         for m in re.finditer(r'<span class="a-price(?P<cls>[^"]*)"(?P<attrs>[^>]*)>\s*'
-                             r'<span class="a-offscreen">(?P<val>[^<]+)</span>', block):
+                             r'<span class="a-offscreen">(?P<val>[^<]*)</span>', block):
             if "a-text-price" in m.group("cls") or 'data-a-strike="true"' in m.group("attrs"):
                 continue
             price = _num(m.group("val"))
+            if price is None:
+                block = block[m.start():]  # read whole/fraction from this same price
             break
         if price is None:
             w = re.search(r'class="a-price-whole">([^<]+)', block)

@@ -11,12 +11,14 @@ Usually you don't run this directly: `python3 -m tracker.dashboard` runs it for 
 """
 import argparse
 import html
+import json
 import os
 import random
 import re
 import time
 import urllib.error
 from dataclasses import dataclass
+from datetime import datetime
 from urllib.parse import quote_plus
 
 from .amazon_page import SHARED, Blocked, _num
@@ -55,7 +57,10 @@ class Card:
 
 # ---------- reading listing pages ----------
 
-ASIN_ATTR = re.compile(r'data-asin="([A-Z0-9]{10})"')
+# Search results mark cards with data-asin; the carousels on the deals page use
+# data-csa-c-item-type="asin" data-csa-c-item-id="amzn1.asin.XXXXXXXXXX" instead.
+ASIN_ATTR = re.compile(r'data-asin="([A-Z0-9]{10})"'
+                       r'|data-csa-c-item-type="asin" data-csa-c-item-id="amzn1\.asin\.([A-Z0-9]{10})"')
 DEAL_WORDS = ("lightning deal", "limited time deal", "deal of the day", "prime day deal",
               "prime exclusive deal", "top deal", "with prime", "عرض لفترة محدودة", "عرض البرق")
 
@@ -82,10 +87,12 @@ def parse_ends_in(text, now):
 
 def _segments(page):
     """Split a listing page into one chunk of HTML per product card."""
-    hits = [(m.start(), m.group(1)) for m in ASIN_ATTR.finditer(page)]
+    hits = [(m.start(), m.group(1) or m.group(2)) for m in ASIN_ATTR.finditer(page)]
     for i, (pos, asin) in enumerate(hits):
-        end = hits[i + 1][0] if i + 1 < len(hits) else min(len(page), pos + 20000)
-        yield asin, page[pos:end]
+        end = hits[i + 1][0] if i + 1 < len(hits) else len(page)
+        end = min(end, pos + 20000)
+        script = page.find("<script", pos, end)  # don't read a neighbour's text out of page scripts
+        yield asin, page[pos:script if script >= 0 else end]
 
 
 def parse_card(asin, seg, now, domain="www.amazon.eg"):
@@ -102,7 +109,8 @@ def parse_card(asin, seg, now, domain="www.amazon.eg"):
     if not price:
         return None
     title = None
-    m = re.search(r'<h2[^>]*aria-label="([^"]+)"', seg) or re.search(r"<h2[^>]*>(.*?)</h2>", seg, re.S)
+    m = (re.search(r'<h2[^>]*aria-label="([^"]+)"', seg) or re.search(r"<h2[^>]*>(.*?)</h2>", seg, re.S)
+         or re.search(r'class="[^"]*dcl-product-title[^"]*"[^>]*>(.*?)</span>\s*</span>', seg, re.S))
     if m:
         title = _clean(m.group(1))
     if not title:
@@ -122,15 +130,66 @@ def parse_card(asin, seg, now, domain="www.amazon.eg"):
                 claimed=int(claimed.group(1)) / 100 if claimed else None,
                 image=img.group(1) if img else None, url=f"https://{domain}/dp/{asin}")
     if strike and strike > price:
-        if "typical" in strike_label or "was" in strike_label.split()[-2:]:
-            card.typical_price = strike
-        else:
-            card.list_price = strike
+        _set_reference(card, strike, strike_label)
     return card
 
 
+def _set_reference(card, strike, label):
+    """'Typical price:' / 'Was:' is Amazon's own recent price; 'List:' is the RRP."""
+    words = re.findall(r"\b(typical|was|list)\b", label.lower())
+    if words and words[-1] in ("typical", "was"):
+        card.typical_price = strike
+    else:
+        card.list_price = strike
+
+
+def _iso_time(text):
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+    except (AttributeError, ValueError):
+        return None
+
+
+def parse_deals_json(page, now, domain="www.amazon.eg"):
+    """The main grid on /deals is drawn by JavaScript, but its first products come in the
+    page as JSON ("productSearchResponse"), with prices, badges and countdown end times."""
+    cards = []
+    decoder = json.JSONDecoder()
+    for m in re.finditer(r'"productSearchResponse"\s*:\s*', page):
+        try:
+            data, _ = decoder.raw_decode(page, m.end())
+        except ValueError:
+            continue
+        for p in data.get("products") or []:
+            asin = p.get("asin")
+            prices = p.get("price") or {}
+            price = _num(str((prices.get("priceToPay") or {}).get("price", "")))
+            if not asin or not price:
+                continue
+            frags = (((p.get("dealBadge") or {}).get("messaging") or {}).get("content") or {}).get("fragments") or []
+            text = " ".join(f.get("text", "") for f in frags).strip()
+            ends_at = next((_iso_time(f["countdownTimer"].get("targetTime"))
+                            for f in frags if isinstance(f.get("countdownTimer"), dict)), None)
+            badge = None
+            if p.get("dealBadge") or p.get("dealDetails"):
+                badge = text if text and not text.lower().startswith("ends in") else "Limited time deal"
+            if (p.get("addToCart") or {}).get("isLightningDeal"):
+                badge = "Lightning deal"
+            img = ((p.get("image") or {}).get("lowRes") or {})
+            card = Card(asin=asin, title=html.unescape(p.get("title") or "") or None, price=price,
+                        badge=badge, ends_at=ends_at if ends_at and ends_at > now else None,
+                        image=f"{img['baseUrl']}._AC_UL320_.{img.get('extension', 'jpg')}" if img.get("baseUrl") else None,
+                        url=f"https://{domain}/dp/{asin}")
+            basis = prices.get("basisPrice") or {}
+            strike = _num(str(basis.get("price", "")))
+            if strike and strike > price:
+                _set_reference(card, strike, basis.get("label", ""))
+            cards.append(card)
+    return cards
+
+
 def parse_listing(page, now, domain="www.amazon.eg"):
-    cards = {}
+    cards = {c.asin: c for c in parse_deals_json(page, now, domain)}
     for asin, seg in _segments(page):
         if asin in cards:
             continue
