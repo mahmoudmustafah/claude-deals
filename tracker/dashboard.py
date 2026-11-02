@@ -175,14 +175,22 @@ def main():
     ap.add_argument("--no-browser", action="store_true")
     args = ap.parse_args()
     Handler.cfg_path = args.config
+    server = None
+    for port in range(args.port, args.port + 20):  # if the port is busy, try the next one
+        try:
+            server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+            break
+        except OSError:
+            print(f"Port {port} is busy (maybe the tracker is already running in another window).")
+    if server is None:
+        raise SystemExit("No free port found. Close other tracker windows and try again.")
+    url = f"http://localhost:{port}"
     if not args.no_track:
         from .main import run_loop
         from .scanner import run_scan_loop
         threading.Thread(target=run_loop, args=(load(args.config),), daemon=True).start()
         if not args.no_scan:
             threading.Thread(target=run_scan_loop, args=(load(args.config),), daemon=True).start()
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    url = f"http://localhost:{args.port}"
     print(f"Dashboard running at {url}  (press Ctrl+C to stop)")
     if not args.no_browser:
         threading.Timer(1.0, webbrowser.open, (url,)).start()
