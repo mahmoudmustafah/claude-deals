@@ -178,6 +178,27 @@ class ScanTests(unittest.TestCase):
         self.assertIsNone(deals["B0DEAL0001"]["ended_at"])
         self.assertEqual(deals["B0LIGHT001"]["ended_at"], NOW + 8100)
 
+    def test_big_claimed_discount_alert_once_with_photo(self):
+        sent = []
+
+        class Notifier:
+            def send(self, text):
+                sent.append(("text", None, text))
+
+            def send_photo(self, photo, caption):
+                sent.append(("photo", photo, caption))
+
+        cfg = dict(self.cfg, scan=dict(self.cfg["scan"], alert_claimed_min=0.30))
+        scan_once(self.db, cfg, FakeFetcher(lambda u: PAGE), notifier=Notifier(), now=NOW)
+        big = [m for m in sent if "off:" in m[2]]
+        # the air fryer (3,850 vs list 6,990 = 45%) qualifies; smaller discounts don't
+        self.assertTrue(any("45% off" in m[2] and "Before (List price): 6,990.00" in m[2]
+                            and "Now: 3,850.00" in m[2] and "/dp/B0DEAL0001" in m[2] for m in big), big)
+        self.assertTrue(all(int(m[2].split("% off")[0].split()[-1]) >= 30 for m in big))
+        n = len(big)
+        scan_once(self.db, cfg, FakeFetcher(lambda u: PAGE), notifier=Notifier(), now=NOW + 3600)
+        self.assertEqual(len([m for m in sent if "off:" in m[2]]), n)  # not sent again
+
     def test_import_saved_pages(self):
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "deals.html")

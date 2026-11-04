@@ -348,12 +348,55 @@ def import_files(db, cfg, paths):
     return stats
 
 
+VERDICT_TEXT = {"real": "✅ Real deal (below its usual price)", "error": "🚨 Possible price error",
+                "fake": "⚠️ Looks fake (it usually sells at about this price)",
+                "small": "Small real discount", "unverified": "❔ Not verified yet (needs ~3 days of price history)"}
+
+
+def format_big_discount(c, verdict, currency="EGP"):
+    before_label = "List price" if c.list_price else "Was"
+    before = c.list_price or c.typical_price
+    lines = [f"🏷️ {c.claimed_discount:.0%} off: {c.title or c.asin}",
+             f"Now: {c.price:,.2f} {currency}",
+             f"Before ({before_label}): {before:,.2f} {currency}",
+             f"Our check: {VERDICT_TEXT.get(verdict, verdict)}"]
+    if c.badge:
+        lines.append(f"Amazon badge: {c.badge}")
+    if c.ends_at:
+        lines.append(f"⏳ Ends in {_fmt_left(c.ends_at - time.time())}")
+    if c.url:
+        lines.append(c.url)
+    return "\n".join(lines)
+
+
+def _alert_big_discount(db, c, deal, verdict, notifier, cfg, now):
+    """Alert on Amazon's claimed discount (scan.alert_claimed_min, e.g. 0.30), once per deal,
+    again only if the price drops further."""
+    min_claim = cfg.get("scan", {}).get("alert_claimed_min")
+    if not min_claim or c.claimed_discount < min_claim:
+        return
+    last = db.last_alert(c.asin)
+    if last and last["kind"] == "BIG_DISCOUNT" and last["ts"] >= deal["first_seen"] and c.price >= last["price"]:
+        return
+    text = format_big_discount(c, verdict, cfg.get("currency", "EGP"))
+    try:
+        if c.image and hasattr(notifier, "send_photo"):
+            notifier.send_photo(c.image, text)
+        else:
+            notifier.send(text)
+    except Exception as e:
+        print("couldn't send alert:", e)
+        return
+    db.record_alert(c.asin, c.price, "BIG_DISCOUNT", now)
+
+
 def _alert_new_deals(db, cards, notifier, settings, cfg, now):
     for c in cards:
         deal = db.deal(c.asin)
         if not deal or deal["ended_at"] is not None:
             continue
         j = judge(db, deal, settings, now)
+        _alert_big_discount(db, c, deal, j["verdict"], notifier, cfg, now)
         # only the best ones go to Telegram; everything is on the dashboard
         min_pct = cfg.get("scan", {}).get("alert_min_discount", 0.25)
         if j["verdict"] != "error" and not (j["verdict"] == "real" and j["real_discount"] >= min_pct):

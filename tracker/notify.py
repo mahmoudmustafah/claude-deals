@@ -32,6 +32,18 @@ class TelegramNotifier:
         with urllib.request.urlopen(self.url, data=data, timeout=15, context=SSL_CONTEXT) as r:
             return json.load(r)
 
+    def send_photo(self, photo_url, caption):
+        """Picture of the product (Telegram downloads it from Amazon's image server) with
+        the alert as its caption. Falls back to a text message if the picture fails."""
+        url = self.url.rsplit("/", 1)[0] + "/sendPhoto"
+        data = urllib.parse.urlencode({"chat_id": self.chat_id, "photo": photo_url,
+                                       "caption": caption[:1024]}).encode()
+        try:
+            with urllib.request.urlopen(url, data=data, timeout=30, context=SSL_CONTEXT) as r:
+                return json.load(r)
+        except Exception:
+            return self.send(caption)
+
 
 class ConsoleNotifier:
     def send(self, text):
