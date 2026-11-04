@@ -242,7 +242,8 @@ def api_scan_once(db, cfg, notifier=None, settings=None, now=None, api=None):
                 break  # no more pages in this category
         if stats["stopped"]:
             break
-    db.end_stale_deals(now or time.time(), stale_after=max(3 * interval, 3 * 3600))
+    db.end_stale_deals(now or time.time(), stale_after=max(3 * interval, 3 * 3600),
+                       expired_only=stats["stopped"] is not None or stats["pages"] == 0)
     db.set_meta("last_scan", now or time.time())
     db.set_meta("last_scan_stats", f"{stats['pages']} API pages" +
                 (f", stopped: {stats['stopped']}" if stats["stopped"] else ""))

@@ -157,6 +157,27 @@ class ScanTests(unittest.TestCase):
         # Lightning deal countdown (2h15m) has passed
         self.assertEqual(deals["B0LIGHT001"]["ended_at"], NOW + 8100)
 
+    def test_blocked_scan_does_not_end_deals(self):
+        scan_once(self.db, self.cfg, FakeFetcher(lambda u: PAGE), now=NOW)
+
+        def refuse(url):
+            raise Blocked("robot check")
+        # a day of refused scans: deals weren't seen, but only because we couldn't look
+        scan_once(self.db, self.cfg, FakeFetcher(refuse), now=NOW + DAY)
+        deals = {d["asin"]: d for d in self.db.deals()}
+        self.assertIsNone(deals["B0DEAL0001"]["ended_at"])
+        self.assertIsNone(deals["B0TYPE0001"]["ended_at"])
+        # a passed countdown still ends the deal
+        self.assertEqual(deals["B0LIGHT001"]["ended_at"], NOW + 8100)
+
+    def test_reopen_deals_ended_only_for_not_being_seen(self):
+        scan_once(self.db, self.cfg, FakeFetcher(lambda u: PAGE), now=NOW)
+        self.db.end_stale_deals(NOW + DAY, stale_after=3 * 3600)  # the old behaviour
+        self.assertEqual(self.db.reopen_unconfirmed_deals(NOW + DAY), 2)
+        deals = {d["asin"]: d for d in self.db.deals()}
+        self.assertIsNone(deals["B0DEAL0001"]["ended_at"])
+        self.assertEqual(deals["B0LIGHT001"]["ended_at"], NOW + 8100)
+
     def test_import_saved_pages(self):
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "deals.html")

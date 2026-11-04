@@ -300,7 +300,9 @@ def scan_once(db, cfg, fetcher=SHARED, notifier=None, settings=None, now=None, p
         cards = _record_page(db, label, page, t, domain, stats)
         if cards and notifier:
             _alert_new_deals(db, [c for c in cards if c.is_deal], notifier, settings, cfg, t)
-    db.end_stale_deals(now or time.time(), stale_after=max(3 * interval, 3 * 3600))
+    # if Amazon refused us, "not seen" doesn't mean the deal ended: only end passed countdowns
+    blocked = stats["stopped"] is not None or stats["pages"] == 0
+    db.end_stale_deals(now or time.time(), stale_after=max(3 * interval, 3 * 3600), expired_only=blocked)
     db.set_meta("last_scan", now or time.time())
     db.set_meta("last_scan_stats", f"{stats['pages']}/{len(sources)} pages"
                 + (f", stopped: {stats['stopped']}" if stats["stopped"] else ""))

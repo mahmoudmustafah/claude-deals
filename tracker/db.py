@@ -113,13 +113,27 @@ class PriceDB:
             "UPDATE deals SET ended_at = CASE WHEN ends_at IS NOT NULL AND ends_at < ? THEN ends_at ELSE ? END "
             "WHERE asin=? AND ended_at IS NULL", (ts, ts, asin))
 
-    def end_stale_deals(self, now, stale_after):
-        """A deal ends when its countdown passes, or when no scan has seen it for a while."""
+    def end_stale_deals(self, now, stale_after, expired_only=False):
+        """A deal ends when its countdown passes, or when no scan has seen it for a while.
+        expired_only: only end deals whose countdown passed (used when the scan was blocked,
+        so "not seen" just means we couldn't look)."""
         self.conn.execute(
-            "UPDATE deals SET ended_at = CASE WHEN ends_at IS NOT NULL AND ends_at < ? THEN ends_at "
-            "ELSE last_seen END WHERE ended_at IS NULL AND ((ends_at IS NOT NULL AND ends_at < ?) "
-            "OR last_seen < ?)", (now, now, now - stale_after))
+            "UPDATE deals SET ended_at = ends_at WHERE ended_at IS NULL AND ends_at IS NOT NULL "
+            "AND ends_at < ?", (now,))
+        if not expired_only:
+            self.conn.execute(
+                "UPDATE deals SET ended_at = last_seen WHERE ended_at IS NULL AND last_seen < ?",
+                (now - stale_after,))
         self.conn.commit()
+
+    def reopen_unconfirmed_deals(self, now):
+        """Undo endings that only happened because scans were blocked: deals with no passed
+        countdown that were ended for not being seen go back to active."""
+        cur = self.conn.execute(
+            "UPDATE deals SET ended_at = NULL WHERE ended_at IS NOT NULL AND ended_at = last_seen "
+            "AND (ends_at IS NULL OR ends_at > ?)", (now,))
+        self.conn.commit()
+        return cur.rowcount
 
     def deals(self, since_ended=0.0):
         rows = self.conn.execute(
