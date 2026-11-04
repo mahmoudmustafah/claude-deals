@@ -79,13 +79,31 @@ def cmd_status(cfg_path):
 
 def cmd_telegram(cfg_path):
     """Finds your chat id from the bot's messages, saves it, and sends a test alert."""
+    import getpass
+    import urllib.error
     import urllib.request
+    from .amazon_page import SSL_CONTEXT
     from .notify import TelegramNotifier
     cfg = load(cfg_path)
     tg = cfg.setdefault("telegram", {})
-    token = tg.get("bot_token") or input("Paste your bot token from @BotFather: ").strip()
-    with urllib.request.urlopen(f"https://api.telegram.org/bot{token}/getUpdates", timeout=15) as r:
-        updates = json.load(r).get("result", [])
+    token = tg.get("bot_token") or getpass.getpass(
+        "Paste your bot token from @BotFather (it stays hidden while you paste): ").strip()
+    try:
+        with urllib.request.urlopen(f"https://api.telegram.org/bot{token}/getUpdates", timeout=30,
+                                    context=SSL_CONTEXT) as r:
+            updates = json.load(r).get("result", [])
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 404):
+            print("Telegram says this token is not valid (maybe it was revoked). Get the current one "
+                  "from @BotFather, remove the old bot_token from config.json, and run this again.")
+        else:
+            print(f"Telegram answered with an error (HTTP {e.code}). Try again in a few minutes.")
+        return
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        print("Couldn't reach Telegram (api.telegram.org) from this network: "
+              f"{getattr(e, 'reason', e)}.\nOpen https://api.telegram.org in your browser: if it doesn't "
+              "load, your network blocks it. Try another network (e.g. a phone hotspot) and run this again.")
+        return
     chats = [u["message"]["chat"]["id"] for u in updates if "message" in u]
     if not chats:
         print("No messages found. Open your bot in Telegram, press Start (or send 'hi'), then run this again.")

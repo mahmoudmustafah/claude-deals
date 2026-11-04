@@ -3,6 +3,8 @@ import json
 import urllib.parse
 import urllib.request
 
+from .amazon_page import SSL_CONTEXT
+
 
 def format_alert(product, v, currency="EGP"):
     title = product.get("title") or product["asin"]
@@ -27,8 +29,20 @@ class TelegramNotifier:
     def send(self, text):
         data = urllib.parse.urlencode({"chat_id": self.chat_id, "text": text,
                                        "disable_web_page_preview": "true"}).encode()
-        with urllib.request.urlopen(self.url, data=data, timeout=15) as r:
+        with urllib.request.urlopen(self.url, data=data, timeout=15, context=SSL_CONTEXT) as r:
             return json.load(r)
+
+    def send_photo(self, photo_url, caption):
+        """Picture of the product (Telegram downloads it from Amazon's image server) with
+        the alert as its caption. Falls back to a text message if the picture fails."""
+        url = self.url.rsplit("/", 1)[0] + "/sendPhoto"
+        data = urllib.parse.urlencode({"chat_id": self.chat_id, "photo": photo_url,
+                                       "caption": caption[:1024]}).encode()
+        try:
+            with urllib.request.urlopen(url, data=data, timeout=30, context=SSL_CONTEXT) as r:
+                return json.load(r)
+        except Exception:
+            return self.send(caption)
 
 
 class ConsoleNotifier:

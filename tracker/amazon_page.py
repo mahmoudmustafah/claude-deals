@@ -3,12 +3,15 @@
 Rules it follows on purpose:
 - One page at a time, with a random pause of several seconds between products.
 - If Amazon shows a robot check (CAPTCHA) or an error, it stops and waits longer
-  before trying again (10 min, 20, 40 ... up to 2 hours). It never tries to get around it.
+  before trying again (30 min, 60, then 2 hours). It never tries to get around it.
 """
 import gzip
 import html
+import os
 import random
 import re
+import ssl
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -21,6 +24,18 @@ USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 
 class Blocked(Exception):
     pass
+
+
+def _ssl_context():
+    """Python from python.org on a Mac comes without trusted certificates until you run its
+    'Install Certificates' step; macOS's own list works just as well."""
+    ctx = ssl.create_default_context()
+    if not ctx.get_ca_certs() and os.path.exists("/etc/ssl/cert.pem"):
+        ctx.load_verify_locations("/etc/ssl/cert.pem")
+    return ctx
+
+
+SSL_CONTEXT = _ssl_context()
 
 
 def _num(text):
@@ -40,9 +55,13 @@ PRICE_BLOCKS = ("corePriceDisplay_desktop_feature_div", "corePrice_feature_div",
                 "corePrice_desktop", "apex_desktop", "price")
 
 
+def is_robot_check(page):
+    return ("validateCaptcha" in page or "Type the characters you see" in page
+            or "api-services-support@amazon.com" in page)
+
+
 def parse_product_page(page, asin):
-    if ("validateCaptcha" in page or "Type the characters you see" in page
-            or "api-services-support@amazon.com" in page):
+    if is_robot_check(page):
         raise Blocked("Amazon showed a robot check")
 
     title = None
@@ -56,16 +75,20 @@ def parse_product_page(page, asin):
         if not block:
             continue
         # The strike-through "was" price, if there is one
-        m = re.search(r'class="a-price a-text-price"[^>]*data-a-strike="true"[^>]*>\s*'
+        # (live pages add more classes, e.g. "a-price a-text-price apex-basisprice-value")
+        m = re.search(r'class="a-price a-text-price[^"]*"[^>]*data-a-strike="true"[^>]*>\s*'
                       r'<span class="a-offscreen">([^<]+)</span>', block)
         if m:
             list_price = _num(m.group(1))
-        # The real price: first a-price that is not the strike-through one
+        # The real price: first a-price that is not the strike-through one.
+        # Live pages often leave its a-offscreen empty and only fill a-price-whole/-fraction.
         for m in re.finditer(r'<span class="a-price(?P<cls>[^"]*)"(?P<attrs>[^>]*)>\s*'
-                             r'<span class="a-offscreen">(?P<val>[^<]+)</span>', block):
+                             r'<span class="a-offscreen">(?P<val>[^<]*)</span>', block):
             if "a-text-price" in m.group("cls") or 'data-a-strike="true"' in m.group("attrs"):
                 continue
             price = _num(m.group("val"))
+            if price is None:
+                block = block[m.start():]  # read whole/fraction from this same price
             break
         if price is None:
             w = re.search(r'class="a-price-whole">([^<]+)', block)
@@ -84,52 +107,92 @@ def parse_product_page(page, asin):
                       title=title, url=f"https://www.amazon.eg/dp/{asin}")
 
 
-class AmazonPageSource(PriceSource):
-    def __init__(self, domain="www.amazon.eg", pause=(4, 10), fetch=None, sleep=time.sleep):
-        self.domain = domain
-        self.pause = pause
-        self.fetch = fetch or self._fetch
+class PoliteFetcher:
+    """Shared by the watch list checker and the deals scanner: one request at a time,
+    and if Amazon pushes back, *everything* pauses (30 min, 60, then 2 hours)."""
+
+    def __init__(self, fetch=None, sleep=time.sleep):
+        self.lock = threading.Lock()
+        self.fetch_raw = fetch or self._fetch
         self.sleep = sleep
         self.blocked_until = 0.0
-        self.backoff_min = 10
+        self.backoff_min = 30
 
-    def _fetch(self, url):
+    @staticmethod
+    def _fetch(url):
         req = urllib.request.Request(url, headers={
             "User-Agent": USER_AGENT,
             "Accept": "text/html,application/xhtml+xml",
             "Accept-Language": "en-US,en;q=0.9",
             "Accept-Encoding": "gzip",
         })
-        with urllib.request.urlopen(req, timeout=30) as r:
+        with urllib.request.urlopen(req, timeout=30, context=SSL_CONTEXT) as r:
             data = r.read()
             if r.headers.get("Content-Encoding") == "gzip":
                 data = gzip.decompress(data)
             return data.decode("utf-8", "replace")
 
+    def paused_for(self):
+        return max(0.0, self.blocked_until - time.time())
+
+    def get(self, url):
+        """Fetch a page. Raises Blocked while paused or when Amazon shows a robot check."""
+        with self.lock:
+            if self.paused_for():
+                raise Blocked(f"paused for {int(self.paused_for() / 60)} more min")
+            try:
+                page = self.fetch_raw(url)
+                if is_robot_check(page):
+                    raise Blocked("Amazon showed a robot check")
+                return page
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    raise
+                self._pause(f"HTTP {e.code}")
+                raise Blocked(f"HTTP {e.code}")
+            except Blocked as e:
+                self._pause(str(e))
+                raise
+
+    def _pause(self, why):
+        self.blocked_until = time.time() + self.backoff_min * 60
+        print(f"Amazon pushed back ({why}). Pausing all requests {self.backoff_min} min.")
+        self.backoff_min = min(self.backoff_min * 2, 120)
+
+    def ok(self):
+        self.backoff_min = 30
+
+
+SHARED = PoliteFetcher()
+
+
+class AmazonPageSource(PriceSource):
+    def __init__(self, domain="www.amazon.eg", pause=(4, 10), fetcher=None):
+        self.domain = domain
+        self.pause = pause
+        self.fetcher = fetcher or SHARED
+
     def get_prices(self, asins):
-        now = time.time()
-        if now < self.blocked_until:
-            print(f"Paused after a robot check; retrying in {int((self.blocked_until - now) / 60)} min.")
+        if self.fetcher.paused_for():
+            print(f"Paused after a robot check; retrying in {int(self.fetcher.paused_for() / 60)} min.")
             return {}
         out = {}
         for i, asin in enumerate(asins):
             if i:
-                self.sleep(random.uniform(*self.pause))
+                self.fetcher.sleep(random.uniform(*self.pause))
             try:
-                page = self.fetch(f"https://{self.domain}/-/en/dp/{asin}")
+                page = self.fetcher.get(f"https://{self.domain}/-/en/dp/{asin}")
                 out[asin] = parse_product_page(page, asin)
-            except (Blocked, urllib.error.HTTPError) as e:
-                if isinstance(e, urllib.error.HTTPError) and e.code == 404:
-                    print(f"{asin}: product page not found (404), skipping.")
-                    continue
-                self.blocked_until = time.time() + self.backoff_min * 60
-                print(f"Amazon pushed back ({e}). Pausing {self.backoff_min} min.")
-                self.backoff_min = min(self.backoff_min * 2, 120)
+            except Blocked:
                 return out
+            except urllib.error.HTTPError as e:
+                print(f"{asin}: product page not found ({e.code}), skipping.")
+                continue
             except Exception as e:
                 print(f"{asin}: couldn't read page ({e})")
             if asin in out and not out[asin].price:
                 print(f"{asin}: no price on the page (out of stock or page layout changed)")
         else:
-            self.backoff_min = 10  # a full clean round resets the wait
+            if asins:
+                self.fetcher.ok()  # a full clean round resets the wait
         return out

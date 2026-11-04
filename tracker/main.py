@@ -28,7 +28,10 @@ def make_source(cfg):
     if kind == "amazon_page":
         from .amazon_page import AmazonPageSource
         return AmazonPageSource(cfg.get("domain", "www.amazon.eg"))
-    raise SystemExit(f"Unknown source '{kind}'. Use 'amazon_page' or 'demo'.")
+    if kind == "creators_api":
+        from .creators_api import CreatorsApiSource
+        return CreatorsApiSource(cfg)
+    raise SystemExit(f"Unknown source '{kind}'. Use 'creators_api', 'amazon_page' or 'demo'.")
 
 
 def make_notifier(cfg):
@@ -61,12 +64,7 @@ def check_once(db, source, notifier, settings, currency="EGP", now=None):
         db.record_price(asin, q.price, q.list_price, q.in_stock, q.seller, now)
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="config.json")
-    ap.add_argument("--once", action="store_true")
-    args = ap.parse_args()
-    cfg = load_config(args.config)
+def run_loop(cfg, once=False):
     db = PriceDB(cfg.get("db_path", "prices.db"))
     for p in cfg["products"]:
         db.add_product(p["asin"], p.get("title"), p.get("url"))
@@ -76,12 +74,20 @@ def main():
     while True:
         try:
             check_once(db, source, notifier, settings, cfg.get("currency", "EGP"))
-            print(time.strftime("%H:%M:%S"), f"checked {len(cfg['products'])} products")
+            print(time.strftime("%H:%M:%S"), f"checked {len(db.products())} products")
         except Exception as e:  # keep running if one check fails
             print("check failed:", e)
-        if args.once:
+        if once:
             break
         time.sleep(interval)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--config", default="config.json")
+    ap.add_argument("--once", action="store_true")
+    args = ap.parse_args()
+    run_loop(load_config(args.config), args.once)
 
 
 if __name__ == "__main__":

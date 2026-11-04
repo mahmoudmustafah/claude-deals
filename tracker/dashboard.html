@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Price Watch</title>
+<style>
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --ink: #14171c; --muted: #646b76; --faint: #9aa1ab;
+  --line: #e4e7ec; --chip: #eef0f3;
+  --deal: #0f8a4f; --deal-bg: #e3f5ec;
+  --error: #c2410c; --error-bg: #fdebe0;
+  --fake: #a16207; --fake-bg: #fdf3d8;
+  --learn: #4b5d79; --learn-bg: #e9eef6;
+  --normal: #5b6472; --normal-bg: #eef0f3;
+  --accent: #2c5bd6; --chart: #2c5bd6; --chart-fill: rgba(44, 91, 214, .10);
+  --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .06);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1216; --card: #171b21; --ink: #e8ebef; --muted: #9aa3ae; --faint: #6b7380;
+    --line: #262c34; --chip: #20262e;
+    --deal: #3ccf8e; --deal-bg: rgba(60, 207, 142, .13);
+    --error: #ff8a50; --error-bg: rgba(255, 138, 80, .14);
+    --fake: #f2c14e; --fake-bg: rgba(242, 193, 78, .13);
+    --learn: #9db4d8; --learn-bg: rgba(157, 180, 216, .12);
+    --normal: #a3abb6; --normal-bg: #20262e;
+    --accent: #7ea2ff; --chart: #7ea2ff; --chart-fill: rgba(126, 162, 255, .12);
+    --shadow: none; --on-accent: #0f1216;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; }
+h1 { margin: 0; font-size: 24px; letter-spacing: -.01em; }
+.sub { color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--deal); box-shadow: 0 0 0 3px var(--deal-bg); }
+.dot.stale { background: var(--faint); box-shadow: none; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow); }
+.stat b { display: block; font-size: 26px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.stat span { color: var(--muted); font-size: 13px; }
+.stat.deal b { color: var(--deal); } .stat.fake b { color: var(--fake); } .stat.error b { color: var(--error); }
+form.add { display: flex; gap: 8px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--line);
+  border-radius: 12px; padding: 10px; box-shadow: var(--shadow); }
+form.add input { flex: 1 1 260px; min-width: 0; border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  border-radius: 8px; padding: 9px 12px; font: inherit; }
+form.add input.name { flex: 0 1 200px; }
+button { font: inherit; cursor: pointer; }
+.btn { background: var(--accent); color: var(--on-accent, #fff); border: 0; border-radius: 8px; padding: 9px 16px; font-weight: 600; }
+.msg { width: 100%; font-size: 13px; color: var(--error); min-height: 0; }
+.msg:empty { display: none; }
+.toolbar { display: flex; justify-content: space-between; align-items: center; margin: 20px 0 12px; gap: 12px; flex-wrap: wrap; }
+.filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.filters button { border: 1px solid var(--line); background: var(--card); color: var(--muted); border-radius: 999px; padding: 5px 12px; }
+.filters button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+select { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 5px 8px; }
+.layout { display: grid; grid-template-columns: 1fr 300px; gap: 16px; align-items: start; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 10px; position: relative; }
+.card.deal { border-color: color-mix(in srgb, var(--deal) 45%, var(--line)); }
+.card.error { border-color: color-mix(in srgb, var(--error) 55%, var(--line)); }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.badge { font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+.b-deal { color: var(--deal); background: var(--deal-bg); } .b-error { color: var(--error); background: var(--error-bg); }
+.b-fake { color: var(--fake); background: var(--fake-bg); } .b-learning, .b-waiting { color: var(--learn); background: var(--learn-bg); }
+.b-normal { color: var(--normal); background: var(--normal-bg); }
+.x { border: 0; background: none; color: var(--faint); font-size: 18px; line-height: 1; padding: 2px 6px; border-radius: 6px; }
+.x:hover { background: var(--chip); color: var(--ink); }
+.title { font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--ink); text-decoration: none; }
+.title:hover { text-decoration: underline; }
+.prices { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.now { font-size: 26px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.now small { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 3px; }
+.vs { font-size: 13px; color: var(--muted); }
+.pct { font-weight: 700; font-size: 13px; padding: 1px 7px; border-radius: 6px; font-variant-numeric: tabular-nums; }
+.pct.down { color: var(--deal); background: var(--deal-bg); } .pct.up { color: var(--error); background: var(--error-bg); }
+.pct.flat { color: var(--normal); background: var(--normal-bg); }
+.claim { font-size: 13px; color: var(--muted); background: var(--chip); border-radius: 8px; padding: 7px 10px; }
+.claim s { color: var(--faint); }
+.claim b.lie { color: var(--fake); }
+.chart { position: relative; height: 96px; }
+.chart svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.end { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: var(--chart);
+  border: 2px solid var(--card); transform: translate(-50%, -50%); box-sizing: content-box; }
+.tip { position: absolute; top: -6px; transform: translateX(-50%); background: var(--ink); color: var(--bg); font-size: 12px;
+  padding: 3px 7px; border-radius: 6px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .1s; }
+.range { font-size: 12px; color: var(--muted); }
+.bar { position: relative; height: 6px; background: var(--chip); border-radius: 999px; margin: 6px 0 4px; }
+.bar i { position: absolute; top: -4px; width: 14px; height: 14px; border-radius: 50%; background: var(--card);
+  border: 3px solid var(--accent); transform: translateX(-50%); }
+.bar u { position: absolute; top: -3px; width: 2px; height: 12px; background: var(--faint); transform: translateX(-50%); }
+.range-row { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
+ul.notes { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+.foot { font-size: 12px; color: var(--faint); margin-top: auto; }
+aside { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; box-shadow: var(--shadow); position: sticky; top: 16px; }
+aside h2 { font-size: 15px; margin: 0 0 10px; }
+.alert { padding: 10px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.alert:first-of-type { border-top: 0; padding-top: 0; }
+.alert a { color: var(--ink); text-decoration: none; font-weight: 600; }
+.alert .when { color: var(--faint); font-size: 12px; }
+.empty { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 48px 16px; background: var(--card);
+  border: 1px dashed var(--line); border-radius: 14px; }
+.legend { font-size: 12px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
+.legend span::before { content: ""; display: inline-block; width: 14px; margin-right: 5px; vertical-align: middle; }
+.legend .l-price::before { height: 2px; background: var(--chart); }
+.legend .l-usual::before { border-top: 2px dashed var(--faint); }
+.tabs { display: flex; gap: 4px; margin-top: 10px; background: var(--chip); border-radius: 10px; padding: 3px; width: fit-content; }
+.tabs button { border: 0; background: none; color: var(--muted); padding: 6px 14px; border-radius: 8px; font-weight: 600; }
+.tabs button.on { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+section > .sub { margin-top: 16px; }
+.stats.five { grid-template-columns: repeat(5, 1fr); }
+.controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.controls input[type=search] { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  border-radius: 8px; padding: 5px 10px; width: 170px; }
+.chk { color: var(--muted); font-size: 13px; display: flex; gap: 5px; align-items: center; }
+.dgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.dcard { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 8px; }
+.dcard.v-real { border-color: color-mix(in srgb, var(--deal) 45%, var(--line)); }
+.dcard.v-error { border-color: color-mix(in srgb, var(--error) 55%, var(--line)); }
+.dcard.ended { opacity: .6; }
+.drow { display: flex; gap: 12px; }
+.thumb { width: 76px; height: 76px; flex: none; border-radius: 10px; background: #fff; border: 1px solid var(--line);
+  display: grid; place-items: center; overflow: hidden; }
+.thumb { position: relative; color: #b8bec7; font-size: 28px; font-weight: 700; text-decoration: none; }
+.thumb img { position: absolute; inset: 4px; width: calc(100% - 8px); height: calc(100% - 8px); object-fit: contain; background: #fff; }
+.dmain { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.b-real { color: var(--deal); background: var(--deal-bg); } .b-unverified, .b-small { color: var(--learn); background: var(--learn-bg); }
+.b-amz { color: var(--muted); background: var(--chip); font-weight: 500; }
+.dprice { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.dprice b { font-size: 20px; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.dprice s { color: var(--faint); font-size: 13px; }
+.cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.cmp div { background: var(--chip); border-radius: 8px; padding: 6px 9px; font-size: 12px; color: var(--muted); }
+.cmp b { display: block; font-size: 15px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.cmp .good b { color: var(--deal); } .cmp .bad b { color: var(--fake); } .cmp .unk b { color: var(--learn); }
+.expiry { font-size: 13px; display: flex; gap: 6px; align-items: center; }
+.expiry.soon { color: var(--error); font-weight: 600; }
+.expiry .muted { color: var(--muted); }
+.meter { height: 5px; border-radius: 999px; background: var(--chip); overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--error); }
+.spark { height: 34px; } .spark svg { width: 100%; height: 100%; display: block; }
+details { font-size: 13px; color: var(--muted); }
+details summary { cursor: pointer; color: var(--accent); }
+details ul { margin: 6px 0 0; padding-left: 18px; }
+.dact { display: flex; gap: 8px; margin-top: auto; }
+.ghost { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 6px 10px;
+  font-size: 13px; text-decoration: none; text-align: center; flex: 1; }
+.ghost:hover { background: var(--chip); }
+.ghost[disabled] { opacity: .6; cursor: default; }
+.more { text-align: center; margin-top: 16px; }
+@media (max-width: 900px) { .stats.five { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; } aside { position: static; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 420px) { .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Amazon.eg Deals</h1>
+      <nav class="tabs" id="tabs">
+        <button data-tab="deals" class="on">🔥 Hot deals</button>
+        <button data-tab="watch">My watch list</button>
+      </nav>
+    </div>
+    <div class="legend"><span class="l-price">Price</span><span class="l-usual">Usual price</span></div>
+  </header>
+
+  <section id="view-deals">
+    <div class="sub"><span class="dot" id="d-dot"></span><span id="d-sub">Loading…</span></div>
+    <section class="stats five">
+      <div class="stat"><b id="d-total">–</b><span>Deals found now</span></div>
+      <div class="stat deal"><b id="d-real">–</b><span>Real deals</span></div>
+      <div class="stat fake"><b id="d-fake">–</b><span>Fake discounts</span></div>
+      <div class="stat"><b id="d-unv">–</b><span>Not verified yet</span></div>
+      <div class="stat error"><b id="d-soon">–</b><span>Ending within 24 h</span></div>
+    </section>
+    <div class="toolbar">
+      <div class="filters" id="d-filters">
+        <button data-f="all" class="on">All</button>
+        <button data-f="real">Real deals</button>
+        <button data-f="error">Price errors</button>
+        <button data-f="unverified">Not verified yet</button>
+        <button data-f="fake">Fake discounts</button>
+      </div>
+      <div class="controls">
+        <input id="d-q" type="search" placeholder="Search deals">
+        <select id="d-cat"><option value="">All categories</option></select>
+        <select id="d-min">
+          <option value="0">Any discount</option><option value="0.2">20%+ off</option>
+          <option value="0.4">40%+ off</option><option value="0.6">60%+ off</option>
+        </select>
+        <select id="d-sort">
+          <option value="real">Best real discount</option>
+          <option value="claimed">Biggest claimed discount</option>
+          <option value="ending">Ending soonest</option>
+          <option value="new">Newest</option>
+        </select>
+        <label class="chk"><input type="checkbox" id="d-ended"> Show ended</label>
+      </div>
+    </div>
+    <div class="dgrid" id="d-grid"></div>
+    <div class="more" id="d-more"></div>
+  </section>
+
+  <section id="view-watch" hidden>
+  <div class="sub"><span class="dot" id="dot"></span><span id="sub">Loading…</span></div>
+  <section class="stats">
+    <div class="stat"><b id="s-total">–</b><span>Products watched</span></div>
+    <div class="stat deal"><b id="s-deal">–</b><span>Real deals now</span></div>
+    <div class="stat fake"><b id="s-fake">–</b><span>Fake discounts caught</span></div>
+    <div class="stat error"><b id="s-error">–</b><span>Possible price errors</span></div>
+  </section>
+
+  <form class="add" id="add">
+    <input id="link" placeholder="Paste an Amazon.eg product link to start watching it" required>
+    <input id="name" class="name" placeholder="Short name (optional)">
+    <button class="btn">Watch</button>
+    <div class="msg" id="msg"></div>
+  </form>
+
+  <div class="toolbar">
+    <div class="filters" id="filters">
+      <button data-f="all" class="on">All</button>
+      <button data-f="deal">Real deals</button>
+      <button data-f="fake">Fake discounts</button>
+      <button data-f="learning">Still learning</button>
+    </div>
+    <select id="sort">
+      <option value="discount">Biggest real discount</option>
+      <option value="recent">Recently added</option>
+      <option value="name">Name</option>
+    </select>
+  </div>
+
+  <div class="layout">
+    <div class="grid" id="grid"></div>
+    <aside>
+      <h2>Recent alerts</h2>
+      <div id="alerts"></div>
+    </aside>
+  </div>
+  </section>
+</div>
+
+<script>
+const STATUS = {
+  error: "Possible price error", deal: "Real deal", fake: "Fake discount",
+  normal: "Normal price", learning: "Learning the usual price", waiting: "Waiting for first check",
+};
+let data = null, filter = "all";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const money = (n) => n == null ? "–" : n.toLocaleString("en-US", { maximumFractionDigits: n >= 1000 ? 0 : 2 });
+const ago = (ts) => {
+  if (!ts) return "never";
+  const s = Math.max(0, data.now - ts);
+  if (s < 90) return "just now";
+  if (s < 3600) return Math.round(s / 60) + " min ago";
+  if (s < 86400) return Math.round(s / 3600) + " h ago";
+  return Math.round(s / 86400) + " days ago";
+};
+
+function chart(p) {
+  const h = p.history;
+  if (h.length < 2) return `<div class="range">Chart appears after a few checks.</div>`;
+  const W = 300, H = 96, pad = 4;
+  const ps = h.map((d) => d.p).concat(p.reference ? [p.reference] : []);
+  let lo = Math.min(...ps), hi = Math.max(...ps);
+  // keep at least a 20% band so small wiggles don't look dramatic
+  if (hi - lo < hi * 0.2) { const mid = (hi + lo) / 2; lo = mid - hi * 0.1; hi = mid + hi * 0.1; }
+  const t0 = h[0].t, t1 = h[h.length - 1].t;
+  const x = (t) => ((t - t0) / (t1 - t0 || 1)) * W;
+  const y = (v) => pad + (1 - (v - lo) / (hi - lo)) * (H - pad * 2);
+  // step line: a price stays the same until the next check
+  let d = `M${x(h[0].t)},${y(h[0].p)}`;
+  for (let i = 1; i < h.length; i++) d += `H${x(h[i].t)}V${y(h[i].p)}`;
+  const area = `${d}V${H}H0Z`;
+  const last = h[h.length - 1];
+  const ref = p.reference ? `<line x1="0" x2="${W}" y1="${y(p.reference)}" y2="${y(p.reference)}" stroke="var(--faint)" stroke-dasharray="4 4" stroke-width="1.2" vector-effect="non-scaling-stroke"/>` : "";
+  return `<div class="chart" data-asin="${esc(p.asin)}">
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+      <path d="${area}" fill="var(--chart-fill)"/>
+      ${ref}
+      <path d="${d}" fill="none" stroke="var(--chart)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+      <line class="cursor" y1="0" y2="${H}" stroke="var(--muted)" stroke-width="1" vector-effect="non-scaling-stroke" opacity="0"/>
+    </svg>
+    <span class="end" style="left:${(x(last.t) / W) * 100}%;top:${y(last.p)}px"></span>
+    <div class="tip"></div>
+  </div>`;
+}
+
+function card(p) {
+  const st = p.status;
+  let prices = `<div class="now">Not checked yet</div>`;
+  if (p.price != null) {
+    let vs = "";
+    if (p.reference) {
+      const r = p.real_discount;
+      const cls = r >= 0.02 ? "down" : r <= -0.02 ? "up" : "flat";
+      const label = r >= 0.02 ? `−${Math.round(r * 100)}%` : r <= -0.02 ? `+${Math.round(-r * 100)}%` : "≈ usual";
+      vs = `<span class="pct ${cls}">${label}</span><span class="vs">usual ${money(p.reference)}</span>`;
+    }
+    prices = `<div class="prices"><div class="now">${money(p.price)}<small>${esc(data.currency)}</small></div>${vs}</div>`;
+  }
+  let claim = "";
+  if (p.claimed_discount && p.list_price) {
+    const real = p.real_discount == null ? null : Math.max(0, Math.round(p.real_discount * 100));
+    const claimed = Math.round(p.claimed_discount * 100);
+    const lie = real != null && claimed - real >= 10;
+    claim = `<div class="claim">Amazon says <s>${money(p.list_price)}</s> → <b class="${lie ? "lie" : ""}">−${claimed}%</b>` +
+      (real != null ? ` · real saving <b>${real}%</b>` : "") + `</div>`;
+  }
+  let range = "";
+  if (p.price != null && p.high_90 > p.low_90) {
+    const pos = (v) => (((v - p.low_90) / (p.high_90 - p.low_90)) * 100).toFixed(1);
+    range = `<div class="range">
+      <div class="range-row"><span>90-day low ${money(p.low_90)}</span><span>high ${money(p.high_90)}</span></div>
+      <div class="bar">${p.reference ? `<u style="left:${pos(p.reference)}%" title="usual price"></u>` : ""}<i style="left:${pos(p.price)}%" title="now"></i></div>
+    </div>`;
+  }
+  const notes = p.notes.filter((n) => !/^Only .* days of history/.test(n));
+  const learning = st === "learning" ? `<div class="range">Needs about 3 days of prices before judging deals.</div>` : "";
+  return `<article class="card ${st}">
+    <div class="top"><span class="badge b-${st}">${STATUS[st]}</span>
+      <button class="x" title="Stop watching" data-del="${esc(p.asin)}">×</button></div>
+    <a class="title" href="${esc(p.url || "#")}" target="_blank" rel="noopener">${esc(p.title)}</a>
+    ${prices}${claim}${chart(p)}${range}${learning}
+    ${notes.length ? `<ul class="notes">${notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
+    <div class="foot">${p.last_checked ? "Checked " + ago(p.last_checked) : ""}</div>
+  </article>`;
+}
+
+function render() {
+  const ps = data.products;
+  const count = (s) => ps.filter((p) => p.status === s).length;
+  $("s-total").textContent = ps.length;
+  $("s-deal").textContent = count("deal");
+  $("s-fake").textContent = count("fake");
+  $("s-error").textContent = count("error");
+  const stale = !data.last_check || data.now - data.last_check > data.interval_minutes * 60 * 2.5;
+  $("dot").classList.toggle("stale", stale);
+  $("sub").textContent = `Amazon.eg · checks every ${data.interval_minutes} min · last check ${ago(data.last_check)}`;
+
+  let list = ps.filter((p) => filter === "all" || p.status === filter ||
+    (filter === "deal" && p.status === "error") || (filter === "learning" && p.status === "waiting"));
+  const sort = $("sort").value;
+  if (sort === "discount") list.sort((a, b) => (b.real_discount ?? -9) - (a.real_discount ?? -9));
+  if (sort === "name") list.sort((a, b) => a.title.localeCompare(b.title));
+  if (sort === "recent") list.reverse();
+  $("grid").innerHTML = list.length ? list.map(card).join("") :
+    `<div class="empty">${ps.length ? "Nothing in this view right now." :
+      "No products yet. Paste an Amazon.eg link above to start watching one."}</div>`;
+
+  $("alerts").innerHTML = data.alerts.length ? data.alerts.map((a) => `<div class="alert">
+      <span class="badge b-${a.kind === "PRICE_ERROR" ? "error" : "deal"}">${a.kind === "PRICE_ERROR" ? "Price error" : a.kind === "BIG_DROP" ? "Big drop" : "Real deal"}</span>
+      <div><a href="${esc(a.url || "#")}" target="_blank" rel="noopener">${esc(a.title || a.asin)}</a></div>
+      <div>${money(a.price)} ${esc(data.currency)} <span class="when">· ${ago(a.ts)}</span></div></div>`).join("")
+    : `<div class="range">No alerts yet. Real deals will show up here (and on Telegram).</div>`;
+}
+
+async function load() {
+  try {
+    data = await (await fetch("/api/data")).json();
+    render();
+  } catch (e) {
+    $("sub").textContent = "Can't reach the tracker. Is it still running?";
+    $("dot").classList.add("stale");
+  }
+}
+
+// chart hover
+document.addEventListener("mousemove", (e) => {
+  const box = e.target.closest?.(".chart");
+  document.querySelectorAll(".chart").forEach((c) => {
+    if (c !== box) { c.querySelector(".tip").style.opacity = 0; const l = c.querySelector(".cursor"); if (l) l.setAttribute("opacity", 0); }
+  });
+  if (!box || !data) return;
+  const p = data.products.find((q) => q.asin === box.dataset.asin);
+  const h = p.history, r = box.getBoundingClientRect();
+  const frac = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  const t = h[0].t + frac * (h[h.length - 1].t - h[0].t);
+  let pt = h[0];
+  for (const q of h) { if (q.t <= t) pt = q; else break; }
+  const tip = box.querySelector(".tip");
+  const date = new Date(pt.t * 1000).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  tip.textContent = `${money(pt.p)} ${data.currency} · ${date}`;
+  tip.style.left = Math.min(Math.max(frac * r.width, 70), r.width - 70) + "px";
+  tip.style.opacity = 1;
+  const l = box.querySelector(".cursor");
+  l.setAttribute("x1", frac * 300); l.setAttribute("x2", frac * 300); l.setAttribute("opacity", .6);
+});
+
+$("filters").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  filter = b.dataset.f;
+  document.querySelectorAll("#filters button").forEach((x) => x.classList.toggle("on", x === b));
+  render();
+});
+$("sort").addEventListener("change", render);
+
+$("add").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("msg").textContent = "";
+  const res = await fetch("/api/products", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ link: $("link").value, title: $("name").value }) });
+  const out = await res.json();
+  if (!res.ok) { $("msg").textContent = out.error; return; }
+  $("link").value = ""; $("name").value = "";
+  load();
+});
+
+$("grid").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-del]"); if (!b) return;
+  const p = data.products.find((q) => q.asin === b.dataset.del);
+  if (!confirm(`Stop watching "${p.title}"? Its price history is kept.`)) return;
+  await fetch("/api/products/" + encodeURIComponent(b.dataset.del), { method: "DELETE" });
+  load();
+});
+
+// ---------------- Hot deals ----------------
+const VERDICT = { real: "Real deal", error: "Possible price error", fake: "Fake discount",
+  small: "Small real discount", unverified: "Not verified yet" };
+let deals = null, dFilter = "all", dShown = 60;
+const dur = (s) => {
+  s = Math.max(0, Math.round(s));
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  if (d) return `${d}d ${h}h`;
+  if (h) return `${h}h ${m}m`;
+  return `${m}m ${s % 60}s`;
+};
+const nowSec = () => Date.now() / 1000;
+const clockSkew = () => (deals ? deals.now - deals._loadedAt : 0);
+
+function spark(h, ref) {
+  if (!h || h.length < 2) return "";
+  const W = 200, H = 34, ps = h.map((d) => d.p).concat(ref ? [ref] : []);
+  let lo = Math.min(...ps), hi = Math.max(...ps);
+  if (hi - lo < hi * 0.2) { const mid = (hi + lo) / 2; lo = mid - hi * 0.1; hi = mid + hi * 0.1; }
+  const t0 = h[0].t, t1 = h[h.length - 1].t;
+  const x = (t) => ((t - t0) / (t1 - t0 || 1)) * W, y = (v) => 2 + (1 - (v - lo) / (hi - lo)) * (H - 4);
+  let d = `M${x(h[0].t)},${y(h[0].p)}`;
+  for (let i = 1; i < h.length; i++) d += `H${x(h[i].t)}V${y(h[i].p)}`;
+  const r = ref ? `<line x1="0" x2="${W}" y1="${y(ref)}" y2="${y(ref)}" stroke="var(--faint)" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>` : "";
+  return `<div class="spark" title="Price over the last 30 days"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${r}
+    <path d="${d}" fill="none" stroke="var(--chart)" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg></div>`;
+}
+
+function expiry(d) {
+  const now = nowSec() + clockSkew();
+  if (d.ended_at) return `<div class="expiry"><span class="muted">Ended ${ago2(now - d.ended_at)} · lasted ${dur(d.ended_at - d.first_seen)}</span></div>`;
+  if (d.ends_at) {
+    const left = d.ends_at - now;
+    const claimed = d.claimed_by != null ? `<div class="meter" title="${Math.round(d.claimed_by * 100)}% claimed"><i style="width:${Math.round(d.claimed_by * 100)}%"></i></div>` : "";
+    return `<div class="expiry ${left < 3 * 3600 ? "soon" : ""}">⏳ Ends in <b data-ends="${d.ends_at}">${dur(left)}</b>${d.claimed_by != null ? ` · ${Math.round(d.claimed_by * 100)}% claimed` : ""}</div>${claimed}`;
+  }
+  return `<div class="expiry"><span class="muted">No end time shown by Amazon · running for ${dur(now - d.first_seen)}</span></div>`;
+}
+const ago2 = (s) => (s < 90 ? "just now" : dur(s) + " ago");
+
+function dealCard(d) {
+  const cur = esc(deals.currency);
+  const strike = d.list_price || d.typical_price;
+  const claimed = d.claimed_discount != null ? `−${Math.round(d.claimed_discount * 100)}%` : "no 'was' price";
+  let real, cls;
+  if (d.verdict === "unverified") {
+    const dn = d.days_needed || 0;
+    real = dn > 1.5 ? `Known in ~${Math.ceil(dn)} days` : dn > 0.05 ? `Known in ~${Math.max(1, Math.round(dn * 24))} h` : "Checking…";
+    cls = "unk";
+  }
+  else { const r = d.real_discount || 0; real = r > 0.005 ? `−${Math.round(r * 100)}%` : "0%"; cls = r >= 0.15 ? "good" : r < 0.05 ? "bad" : ""; }
+  const notes = d.notes || [];
+  return `<article class="dcard v-${d.verdict} ${d.ended_at ? "ended" : ""}">
+    <div class="drow">
+      <a class="thumb" href="${esc(d.url)}" target="_blank" rel="noopener"><span>${esc((d.title || "?").trim()[0])}</span>${d.image ? `<img loading="lazy" src="${esc(d.image)}" alt="" onerror="this.remove()">` : ""}</a>
+      <div class="dmain">
+        <div class="badges"><span class="badge b-${d.verdict}">${VERDICT[d.verdict]}</span>${d.badge ? `<span class="badge b-amz">${esc(d.badge)}</span>` : ""}</div>
+        <a class="title" href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.title)}</a>
+        <div class="dprice"><b>${money(d.price)} <small>${cur}</small></b>${strike ? `<s>${money(strike)}</s>` : ""}</div>
+      </div>
+    </div>
+    <div class="cmp">
+      <div>Amazon claims<b>${claimed}</b></div>
+      <div class="${cls}">Real discount<b>${real}</b></div>
+    </div>
+    ${expiry(d)}
+    ${spark(d.history, d.reference)}
+    ${notes.length ? `<details><summary>Why?</summary><ul>${notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul></details>` : ""}
+    <div class="dact">
+      <button class="ghost" data-watch="${esc(d.asin)}" ${d.watched ? "disabled" : ""}>${d.watched ? "✓ Watching" : "☆ Watch"}</button>
+      <a class="ghost" href="${esc(d.url)}" target="_blank" rel="noopener">View on Amazon</a>
+    </div>
+  </article>`;
+}
+
+function renderDeals() {
+  if (!deals) return;
+  const now = nowSec() + clockSkew();
+  const active = deals.deals.filter((d) => !d.ended_at);
+  const c = (v) => active.filter((d) => d.verdict === v).length;
+  $("d-total").textContent = active.length;
+  $("d-real").textContent = c("real") + c("error");
+  $("d-fake").textContent = c("fake");
+  $("d-unv").textContent = c("unverified");
+  $("d-soon").textContent = active.filter((d) => d.ends_at && d.ends_at - now < 86400).length;
+  const sc = deals.scan;
+  let sub = `Scans Amazon.eg every ${sc.interval_minutes} min · last scan ${sc.last_scan ? ago2(now - sc.last_scan) : "not yet (first scan takes a few minutes)"} · ${sc.products_seen.toLocaleString()} products with price history`;
+  if (sc.paused_minutes) sub += ` · paused ${sc.paused_minutes} min (Amazon asked us to slow down)`;
+  $("d-sub").textContent = sub;
+  $("d-dot").classList.toggle("stale", !sc.last_scan || now - sc.last_scan > sc.interval_minutes * 60 * 2.5 || sc.paused_minutes > 0);
+
+  const cats = [...new Set(deals.deals.map((d) => d.source).filter(Boolean))].sort();
+  const sel = $("d-cat"), cur = sel.value;
+  sel.innerHTML = `<option value="">All categories</option>` + cats.map((x) => `<option ${x === cur ? "selected" : ""}>${esc(x)}</option>`).join("");
+
+  const q = $("d-q").value.trim().toLowerCase(), cat = sel.value, min = +$("d-min").value, showEnded = $("d-ended").checked;
+  let list = deals.deals.filter((d) => (showEnded || !d.ended_at)
+    && (dFilter === "all" || d.verdict === dFilter || (dFilter === "real" && d.verdict === "error"))
+    && (!cat || d.source === cat)
+    && (!q || d.title.toLowerCase().includes(q))
+    && Math.max(d.real_discount || 0, d.verdict === "unverified" ? d.claimed_discount || 0 : 0) >= min);
+  const realKey = (d) => (d.verdict === "unverified" ? -1 + (d.claimed_discount || 0) / 10 : d.real_discount ?? -1);
+  const sorts = {
+    real: (a, b) => realKey(b) - realKey(a),
+    claimed: (a, b) => (b.claimed_discount || 0) - (a.claimed_discount || 0),
+    ending: (a, b) => (a.ends_at || 9e12) - (b.ends_at || 9e12),
+    new: (a, b) => b.first_seen - a.first_seen,
+  };
+  list.sort(sorts[$("d-sort").value]);
+  $("d-grid").innerHTML = list.length ? list.slice(0, dShown).map(dealCard).join("") :
+    `<div class="empty">${deals.deals.length ? "No deals match these filters." :
+      "No deals yet. The first scan runs right after you start the tracker and takes a few minutes. This page refreshes by itself."}</div>`;
+  $("d-more").innerHTML = list.length > dShown ? `<button class="ghost" id="d-showmore" style="flex:none;padding:8px 18px">Show ${Math.min(60, list.length - dShown)} more (${list.length - dShown} left)</button>` : "";
+}
+
+async function loadDeals() {
+  try {
+    deals = await (await fetch("/api/deals")).json();
+    deals._loadedAt = nowSec();
+    renderDeals();
+  } catch (e) {
+    $("d-sub").textContent = "Can't reach the tracker. Is it still running?";
+    $("d-dot").classList.add("stale");
+  }
+}
+
+$("d-filters").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  dFilter = b.dataset.f; dShown = 60;
+  document.querySelectorAll("#d-filters button").forEach((x) => x.classList.toggle("on", x === b));
+  renderDeals();
+});
+["d-q", "d-cat", "d-min", "d-sort", "d-ended"].forEach((id) =>
+  $(id).addEventListener(id === "d-q" ? "input" : "change", () => { dShown = 60; renderDeals(); }));
+$("d-more").addEventListener("click", (e) => { if (e.target.id === "d-showmore") { dShown += 60; renderDeals(); } });
+$("d-grid").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-watch]"); if (!b || b.disabled) return;
+  const d = deals.deals.find((x) => x.asin === b.dataset.watch);
+  b.disabled = true; b.textContent = "Adding…";
+  const res = await fetch("/api/products", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ link: d.asin, title: d.title }) });
+  if (res.ok) { d.watched = 1; b.textContent = "✓ Watching"; load(); } else { b.disabled = false; b.textContent = "☆ Watch"; }
+});
+// live countdowns
+setInterval(() => {
+  const now = nowSec() + clockSkew();
+  document.querySelectorAll("[data-ends]").forEach((el) => { el.textContent = dur(+el.dataset.ends - now); });
+}, 1000);
+
+// tabs
+function showTab(t) {
+  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
+  $("view-deals").hidden = t !== "deals";
+  $("view-watch").hidden = t !== "watch";
+  try { localStorage.setItem("tab", t); } catch (e) {}
+}
+$("tabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) showTab(b.dataset.tab); });
+try { showTab(localStorage.getItem("tab") || "deals"); } catch (e) { showTab("deals"); }
+
+loadDeals();
+setInterval(loadDeals, 60000);
+
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>

@@ -4,7 +4,38 @@
   "currency": "EGP",
   "interval_minutes": 10,
   "db_path": "prices.db",
-  "telegram": { "bot_token": "", "chat_id": "" },
-  "settings": { "real_deal_pct": 0.15, "error_pct": 0.5, "min_history_days": 3 },
-  "products": []
+  "telegram": {
+    "bot_token": "",
+    "chat_id": ""
+  },
+  "settings": {
+    "real_deal_pct": 0.15,
+    "error_pct": 0.5,
+    "min_history_days": 3
+  },
+  "products": [],
+  "scan": {
+    "interval_minutes": 60,
+    "deals_page": true,
+    "pages_per_query": 1,
+    "alert_min_discount": 0.25,
+    "alert_claimed_min": 0.20,
+    "alert_claimed_max": 0.79,
+    "alert_keywords": [],
+    "queries": [
+      "mobile phones",
+      "laptops",
+      "headphones",
+      "air fryer"
+    ]
+  },
+  "creators_api": {
+    "credential_id": "",
+    "credential_secret": "",
+    "version": "3.2",
+    "partner_tag": "",
+    "min_saving_percent": 10,
+    "pages_per_query": 3,
+    "seconds_between_requests": 1.5
+  }
 }
