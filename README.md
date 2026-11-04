@@ -25,7 +25,7 @@ and shows when the deal ends when Amazon gives an end time.
   ended once it's gone.
 - **My watch list** tab: products you follow closely (checked every 10 minutes), with a full
   90-day chart. Add one from any deal with **☆ Watch**, or paste a link.
-- **Telegram** (optional): any scanned deal over 30% off (Amazon's claim, `scan.alert_claimed_min`) with product picture, link, before/now price and our real/fake check; watch-list deals; and scanned deals that are
+- **Telegram** (optional): any scanned deal 20-79% off (Amazon's claim, `scan.alert_claimed_min`/`alert_claimed_max`) with product picture, link, before/now price and our real/fake check; watch-list deals; and scanned deals that are
   verified real and 25%+ off (change `scan.alert_min_discount`).
 
 ## Setup on a Mac (once)

@@ -370,10 +370,12 @@ def format_big_discount(c, verdict, currency="EGP"):
 
 
 def _alert_big_discount(db, c, deal, verdict, notifier, cfg, now):
-    """Alert on Amazon's claimed discount (scan.alert_claimed_min, e.g. 0.30), once per deal,
+    """Alert on Amazon's claimed discount between scan.alert_claimed_min and
+    scan.alert_claimed_max (e.g. 0.20 to 0.79), once per deal,
     again only if the price drops further."""
-    min_claim = cfg.get("scan", {}).get("alert_claimed_min")
-    if not min_claim or c.claimed_discount < min_claim:
+    scan = cfg.get("scan", {})
+    min_claim, max_claim = scan.get("alert_claimed_min"), scan.get("alert_claimed_max", 1.0)
+    if not min_claim or not (min_claim <= c.claimed_discount <= max_claim):
         return
     last = db.last_alert(c.asin)
     if last and last["kind"] == "BIG_DISCOUNT" and last["ts"] >= deal["first_seen"] and c.price >= last["price"]:

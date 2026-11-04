@@ -19,7 +19,8 @@
     "deals_page": true,
     "pages_per_query": 1,
     "alert_min_discount": 0.25,
-    "alert_claimed_min": 0.30,
+    "alert_claimed_min": 0.20,
+    "alert_claimed_max": 0.79,
     "queries": [
       "mobile phones",
       "laptops",
