@@ -377,6 +377,9 @@ def _alert_big_discount(db, c, deal, verdict, notifier, cfg, now):
     min_claim, max_claim = scan.get("alert_claimed_min"), scan.get("alert_claimed_max", 1.0)
     if not min_claim or not (min_claim <= c.claimed_discount <= max_claim):
         return
+    words = scan.get("alert_keywords")  # e.g. ["perfume", "eau de", "cologne"]: only these
+    if words and not any(w.lower() in (c.title or "").lower() for w in words):
+        return
     last = db.last_alert(c.asin)
     if last and last["kind"] == "BIG_DISCOUNT" and last["ts"] >= deal["first_seen"] and c.price >= last["price"]:
         return

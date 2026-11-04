@@ -21,6 +21,7 @@
     "alert_min_discount": 0.25,
     "alert_claimed_min": 0.20,
     "alert_claimed_max": 0.79,
+    "alert_keywords": [],
     "queries": [
       "mobile phones",
       "laptops",

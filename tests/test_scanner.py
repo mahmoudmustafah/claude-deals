@@ -199,6 +199,18 @@ class ScanTests(unittest.TestCase):
         scan_once(self.db, cfg, FakeFetcher(lambda u: PAGE), notifier=Notifier(), now=NOW + 3600)
         self.assertEqual(len([m for m in sent if "off:" in m[2]]), n)  # not sent again
 
+    def test_alert_keywords_limit_alerts(self):
+        sent = []
+
+        class Notifier:
+            def send(self, text):
+                sent.append(text)
+
+        cfg = dict(self.cfg, scan=dict(self.cfg["scan"], alert_claimed_min=0.20,
+                                       alert_claimed_max=0.79, alert_keywords=["perfume"]))
+        scan_once(self.db, cfg, FakeFetcher(lambda u: PAGE), notifier=Notifier(), now=NOW)
+        self.assertEqual([m for m in sent if "off:" in m], [])  # no perfumes on this page
+
     def test_import_saved_pages(self):
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "deals.html")
